@@ -2,7 +2,7 @@ import { createKokoroEngine } from '../engine/kokoro.js';
 import { extractFromFile } from '../docs/extract.js';
 import { encodeWav } from '../audio/wav.js';
 import { createWaveController } from './wave.js';
-import { cacheModelUrls } from '../pwa.js';
+import { cacheModelUrls, getShellVersion, setPWABusy } from '../pwa.js';
 
 /**
  * Wire the page UI.
@@ -898,6 +898,7 @@ export async function bootApp() {
    */
   function setBusy(on, msg) {
     busy = on;
+    setPWABusy(on);
     els.spinner.hidden = !on;
     setStatus(msg);
     els.status.classList.toggle('is-ok', !on);
@@ -979,17 +980,26 @@ async function loadAppVersion() {
   }
   try {
     const res = await fetch('/api/version', { credentials: 'same-origin' });
-    if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json();
+      const ver = data && typeof data.version === 'string' ? data.version.trim() : '';
+      if (ver) {
+        el.textContent = `v${ver}`;
+        el.hidden = false;
+        return;
+      }
+    }
+  } catch {
+    /* try shell version below */
+  }
+  try {
+    const shell = await getShellVersion();
+    if (!shell || shell === 'dev') {
       return;
     }
-    const data = await res.json();
-    const ver = data && typeof data.version === 'string' ? data.version.trim() : '';
-    if (!ver) {
-      return;
-    }
-    el.textContent = `v${ver}`;
+    el.textContent = `v${shell}`;
     el.hidden = false;
   } catch {
-    // Static hosts without the API omit the label.
+    /* Static hosts without a SW version omit the label. */
   }
 }

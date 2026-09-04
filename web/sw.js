@@ -1,7 +1,9 @@
 /* speakasm service worker: offline shell, COOP/COEP isolation, auto-update */
-const CACHE_VERSION = 'speakasm-v0.2.5';
-const SHELL_CACHE = `${CACHE_VERSION}-shell`;
-const ASSET_CACHE = `${CACHE_VERSION}-assets`;
+const APP = 'speakasm';
+const SHELL_VERSION = 'dev';
+const ASSET_VERSION = 'v1';
+const SHELL_CACHE = `${APP}-shell-${SHELL_VERSION}`;
+const ASSET_CACHE = `${APP}-assets-${ASSET_VERSION}`;
 
 const PRECACHE = [
   '/',
@@ -68,15 +70,25 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(
-        keys
-          .filter((key) => key.startsWith('speakasm-') && !key.startsWith(CACHE_VERSION))
-          .map((key) => caches.delete(key)),
-      );
+      await Promise.all(keys.filter(isStaleCacheKey).map((key) => caches.delete(key)));
       await self.clients.claim();
     })(),
   );
 });
+
+/**
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isStaleCacheKey(key) {
+  if (key === SHELL_CACHE || key === ASSET_CACHE) {
+    return false;
+  }
+  if (key.startsWith(`${APP}-shell-`) || key.startsWith(`${APP}-assets-`)) {
+    return true;
+  }
+  return key.startsWith(`${APP}-v`);
+}
 
 self.addEventListener('message', (event) => {
   const data = event.data || {};
@@ -85,7 +97,13 @@ self.addEventListener('message', (event) => {
     return;
   }
   if (data.type === 'GET_VERSION') {
-    event.source && event.source.postMessage({ type: 'SW_VERSION', version: CACHE_VERSION });
+    event.source &&
+      event.source.postMessage({
+        type: 'SW_VERSION',
+        version: SHELL_VERSION,
+        shell: SHELL_VERSION,
+        assets: ASSET_VERSION,
+      });
     return;
   }
   if (data.type === 'CACHE_URLS') {
@@ -159,7 +177,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(staleWhileRevalidate(req, SHELL_CACHE));
+  event.respondWith(networkFirst(req, SHELL_CACHE));
 });
 
 /**
@@ -220,19 +238,4 @@ async function cacheFirst(req, cacheName) {
     cache.put(req, fresh.clone());
   }
   return withIsolationHeaders(fresh);
-}
-
-async function staleWhileRevalidate(req, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(req);
-  const network = fetch(req)
-    .then((fresh) => {
-      if (fresh && fresh.ok) {
-        cache.put(req, fresh.clone());
-      }
-      return fresh;
-    })
-    .catch(() => cached);
-  const response = cached || (await network);
-  return withIsolationHeaders(response);
 }

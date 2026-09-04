@@ -1,9 +1,61 @@
 /**
- * Register the service worker, enable COOP/COEP isolation, and auto-apply updates.
+ * Register the service worker, enable COOP/COEP isolation, and auto-apply updates when idle.
  */
 
 const UPDATE_TOAST_ID = 'pwa-update-toast';
 const COI_RELOAD_KEY = 'speakasm-coi-reload';
+
+let appBusy = false;
+let reloadQueued = false;
+let refreshing = false;
+
+/**
+ * Mark long-running work so PWA reload waits until idle or the tab is hidden.
+ * @param {boolean} busy
+ */
+export function setPWABusy(busy) {
+  appBusy = Boolean(busy);
+  if (!appBusy) {
+    flushQueuedReload();
+  }
+}
+
+/**
+ * Ask the active service worker for its stamped shell version.
+ * @returns {Promise<string>}
+ */
+export async function getShellVersion() {
+  if (!('serviceWorker' in navigator)) {
+    return '';
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const worker = reg.active || navigator.serviceWorker.controller;
+  if (!worker) {
+    return '';
+  }
+  return new Promise((resolve) => {
+    const onMessage = (event) => {
+      const data = event.data || {};
+      if (data.type !== 'SW_VERSION') {
+        return;
+      }
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+      const ver =
+        typeof data.shell === 'string'
+          ? data.shell
+          : typeof data.version === 'string'
+            ? data.version
+            : '';
+      resolve(ver);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    worker.postMessage({ type: 'GET_VERSION' });
+    setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+      resolve('');
+    }, 1500);
+  });
+}
 
 /**
  * @returns {Promise<void>}
@@ -14,7 +66,10 @@ export async function registerPWA() {
   }
 
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
     wireAutoUpdate(reg);
     await ensureCrossOriginIsolated();
   } catch (err) {
@@ -61,18 +116,14 @@ export async function cacheModelUrls(urls, onProgress) {
  * @param {ServiceWorkerRegistration} reg
  */
 function wireAutoUpdate(reg) {
-  let refreshing = false;
-
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) {
-      return;
+    queueReload();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushQueuedReload();
     }
-    if (!globalThis.crossOriginIsolated) {
-      return;
-    }
-    refreshing = true;
-    showUpdateToast('Updating...');
-    window.location.reload();
   });
 
   const askWaiting = () => {
@@ -115,6 +166,24 @@ function wireAutoUpdate(reg) {
   window.addEventListener('focus', check);
   setInterval(check, 60 * 1000);
   check();
+}
+
+function queueReload() {
+  reloadQueued = true;
+  flushQueuedReload();
+}
+
+function flushQueuedReload() {
+  if (!reloadQueued || refreshing) {
+    return;
+  }
+  if (appBusy && document.visibilityState === 'visible') {
+    showUpdateToast('Update ready...');
+    return;
+  }
+  refreshing = true;
+  showUpdateToast('Updating...');
+  window.location.reload();
 }
 
 /**
@@ -169,5 +238,5 @@ function showUpdateToast(text) {
     document.body.appendChild(el);
   }
   el.textContent = text;
-  el.setAttribute('class', 'pwa-toast is-on');
+  el.classList.add('is-on');
 }

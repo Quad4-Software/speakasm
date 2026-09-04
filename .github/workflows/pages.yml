@@ -44,6 +44,12 @@ jobs:
       - name: Fetch assets
         run: bash scripts/fetch-assets.sh
 
+      - name: Stamp service worker shell version
+        run: |
+          SHELL_VERSION="${GITHUB_SHA::12}"
+          sed -i "s/const SHELL_VERSION = '[^']*'/const SHELL_VERSION = '${SHELL_VERSION}'/" web/sw.js
+          grep -q "const SHELL_VERSION = '${SHELL_VERSION}'" web/sw.js
+
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
