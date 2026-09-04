@@ -51,7 +51,8 @@ ARG HF=https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main
 RUN curl -L --fail --retry 5 --retry-delay 2 -o /models/Kokoro-82M-v1.0-ONNX/config.json "$HF/config.json" \
 	&& curl -L --fail --retry 5 --retry-delay 2 -o /models/Kokoro-82M-v1.0-ONNX/tokenizer.json "$HF/tokenizer.json" \
 	&& curl -L --fail --retry 5 --retry-delay 2 -o /models/Kokoro-82M-v1.0-ONNX/tokenizer_config.json "$HF/tokenizer_config.json" \
-	&& curl -L --fail --retry 5 --retry-delay 2 -o /models/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx "$HF/onnx/model_quantized.onnx"
+	&& curl -L --fail --retry 5 --retry-delay 2 -o /models/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx "$HF/onnx/model_quantized.onnx" \
+	&& curl -L --fail --retry 5 --retry-delay 2 -o /models/Kokoro-82M-v1.0-ONNX/onnx/model.onnx "$HF/onnx/model.onnx"
 
 RUN for voice in af_heart af_bella af_sarah af_nicole af_nova af_sky am_adam am_michael am_fenrir am_puck bf_emma bf_isabella bm_george bm_lewis; do \
 	curl -L --fail --retry 5 --retry-delay 2 \

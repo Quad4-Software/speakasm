@@ -37,6 +37,7 @@ if [[ "$SHELL_ONLY" -eq 0 ]]; then
   download "$HF/tokenizer.json" "$MODEL_DIR/tokenizer.json"
   download "$HF/tokenizer_config.json" "$MODEL_DIR/tokenizer_config.json"
   download "$HF/onnx/model_quantized.onnx" "$MODEL_DIR/onnx/model_quantized.onnx"
+  download "$HF/onnx/model.onnx" "$MODEL_DIR/onnx/model.onnx"
 
   VOICES=(
     af_heart af_bella af_sarah af_nicole af_nova af_sky

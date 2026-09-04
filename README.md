@@ -4,9 +4,9 @@ Offline text-to-speech in the browser via [Kokoro-82M](https://github.com/hexgra
 
 **Live:** [https://speakasm.quad4.io](https://speakasm.quad4.io)
 
-Kokoro weights (`web/models/`, ~95MB q8) and the vendored JS runtime are **not** in git. Docker and Pages fetch them at build time. For a local source build, run `make assets` once.
+Kokoro weights (`web/models/`, ~92MB q8 + ~326MB fp32) and the vendored JS runtime are **not** in git. Docker and Pages fetch them at build time. For a local source build, run `make assets` once.
 
-Kokoro (82M, official browser ONNX via Transformers.js) was chosen over Pocket TTS for a lighter in-browser footprint and first-party WASM/WebGPU support. See [kokorottsai.com](https://kokorottsai.com/) and the [hexgrad/kokoro](https://github.com/hexgrad/kokoro) repo.
+Kokoro (82M, official browser ONNX via Transformers.js) was chosen over Pocket TTS for a lighter in-browser footprint and first-party WASM/WebGPU support. WebGPU uses fp32, WASM uses q8. See [kokorottsai.com](https://kokorottsai.com/) and the [hexgrad/kokoro](https://github.com/hexgrad/kokoro) repo.
 
 ## Install (Docker)
 

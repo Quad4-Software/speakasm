@@ -83,6 +83,8 @@ export async function bootApp() {
   let clockWatch = 0;
 
   setBusy(true, 'Getting ready...');
+  /** @type {string} */
+  let readyStatus = 'Ready when you are.';
   try {
     voices = await loadVoices();
     fillVoices(els.voicePicker, voices);
@@ -90,7 +92,10 @@ export async function bootApp() {
     setStatus('Warming up Kokoro...');
     wave.setMode('loading');
     await engine.load();
-    setBusy(false, 'Ready when you are.');
+    const backend = engine.backend();
+    const backendBit = backend ? ` (${backend.device}/${backend.dtype})` : '';
+    readyStatus = `Ready when you are.${backendBit}`;
+    setBusy(false, readyStatus);
     els.status.classList.add('is-ok');
     wave.setMode('idle');
     syncActions();
@@ -271,6 +276,7 @@ export async function bootApp() {
         voice: els.voice.value,
         speed: Number(els.speed.value) || 1,
         signal: abort.signal,
+        pieces: chunks,
         onChunk: ({ audio, sampleRate, index }) => {
           doneChunks = index + 1;
           lastRate = sampleRate;
@@ -287,7 +293,10 @@ export async function bootApp() {
       els.status.classList.add('is-ok');
       els.meta.hidden = false;
       const seconds = lastAudio ? lastAudio.length / lastRate : 0;
-      els.meta.textContent = `${formatDuration(seconds)} · ${result.chunks} chunk${result.chunks === 1 ? '' : 's'} · ${els.voice.value}`;
+      const backend = engine.backend();
+      const backendLabel = backend ? `${backend.device}/${backend.dtype}` : '';
+      const backendBit = backendLabel ? ` · ${backendLabel}` : '';
+      els.meta.textContent = `${formatDuration(seconds)} · ${result.chunks} chunk${result.chunks === 1 ? '' : 's'} · ${els.voice.value}${backendBit}`;
       syncActions();
       syncPlaybackUi();
     } catch (err) {
@@ -696,7 +705,7 @@ export async function bootApp() {
         setStatus(`Caching offline… ${done}/${total}`);
       });
       if (!busy) {
-        setStatus('Ready when you are.');
+        setStatus(readyStatus);
         els.status.classList.add('is-ok');
       }
     } catch (err) {
@@ -715,6 +724,7 @@ export async function bootApp() {
       '/models/Kokoro-82M-v1.0-ONNX/tokenizer.json',
       '/models/Kokoro-82M-v1.0-ONNX/tokenizer_config.json',
       '/models/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx',
+      '/models/Kokoro-82M-v1.0-ONNX/onnx/model.onnx',
     ];
     for (const v of voices) {
       urls.push(`/models/Kokoro-82M-v1.0-ONNX/voices/${v.id}.bin`);

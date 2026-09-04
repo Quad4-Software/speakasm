@@ -3,7 +3,8 @@
  */
 
 const MODEL_ID = 'Kokoro-82M-v1.0-ONNX';
-const DEFAULT_DTYPE = 'q8';
+const CHUNK_MERGE_MAX = 450;
+const WASM_THREAD_CAP = 4;
 
 /**
  * @typedef {{
@@ -19,13 +20,19 @@ const DEFAULT_DTYPE = 'q8';
  */
 
 /**
+ * @typedef {{ device: 'webgpu' | 'wasm', dtype: 'fp32' | 'q8' }} BackendConfig
+ */
+
+/**
  * @returns {Promise<{
  *   load: () => Promise<void>,
  *   listVoices: () => string[],
+ *   backend: () => BackendConfig | null,
  *   generate: (text: string, opts: {
  *     voice: string,
  *     speed?: number,
  *     signal?: AbortSignal,
+ *     pieces?: string[],
  *     onChunk?: (info: { text: string, index: number, audio: Float32Array, sampleRate: number }) => void,
  *   }) => Promise<{ audio: Float32Array, sampleRate: number, chunks: number }>,
  *   dispose: () => void,
@@ -41,12 +48,16 @@ export async function createKokoroEngine() {
   env.useBrowserCache = false;
   if (env.backends?.onnx?.wasm) {
     env.backends.onnx.wasm.wasmPaths = '/vendor/kokoro/';
+    const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 1 : 1;
+    env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(WASM_THREAD_CAP, cores));
   } else if ('wasmPaths' in env) {
     env.wasmPaths = '/vendor/kokoro/';
   }
 
   /** @type {any} */
   let tts = null;
+  /** @type {BackendConfig | null} */
+  let active = null;
   let loading = /** @type {Promise<void> | null} */ (null);
 
   async function load() {
@@ -58,19 +69,16 @@ export async function createKokoroEngine() {
       return;
     }
     loading = (async () => {
-      // Ship q8 only (~92MB). Prefer WebGPU when available, else WASM.
-      const preferred = await pickDevice();
+      // WebGPU needs fp32. Quantized q8 stays on WASM.
+      const preferred = await pickBackend();
       try {
-        tts = await KokoroTTS.from_pretrained(MODEL_ID, {
-          dtype: DEFAULT_DTYPE,
-          device: preferred,
-        });
+        tts = await KokoroTTS.from_pretrained(MODEL_ID, preferred);
+        active = preferred;
       } catch (err) {
-        if (preferred !== 'wasm') {
-          tts = await KokoroTTS.from_pretrained(MODEL_ID, {
-            dtype: DEFAULT_DTYPE,
-            device: 'wasm',
-          });
+        if (preferred.device !== 'wasm') {
+          const fallback = /** @type {BackendConfig} */ ({ device: 'wasm', dtype: 'q8' });
+          tts = await KokoroTTS.from_pretrained(MODEL_ID, fallback);
+          active = fallback;
         } else {
           throw err;
         }
@@ -97,6 +105,10 @@ export async function createKokoroEngine() {
       } catch {
         return [];
       }
+    },
+
+    backend() {
+      return active;
     },
 
     async generate(text, opts) {
@@ -133,8 +145,8 @@ export async function createKokoroEngine() {
         }
       })();
 
-      // Feed in sentence-sized chunks for lower latency.
-      const pieces = splitForSpeech(text);
+      // Sentence-sized chunks for lower time-to-first-audio.
+      const pieces = opts.pieces || splitForSpeech(text);
       for (const piece of pieces) {
         if (signal?.aborted) {
           throw new DOMException('Aborted', 'AbortError');
@@ -152,26 +164,27 @@ export async function createKokoroEngine() {
 
     dispose() {
       tts = null;
+      active = null;
     },
   };
 }
 
 /**
- * @returns {Promise<'webgpu' | 'wasm'>}
+ * @returns {Promise<BackendConfig>}
  */
-async function pickDevice() {
+async function pickBackend() {
   try {
     if (!navigator.gpu) {
-      return 'wasm';
+      return { device: 'wasm', dtype: 'q8' };
     }
     const adapter = await navigator.gpu.requestAdapter();
     if (adapter) {
-      return 'webgpu';
+      return { device: 'webgpu', dtype: 'fp32' };
     }
   } catch {
     /* fall through to wasm */
   }
-  return 'wasm';
+  return { device: 'wasm', dtype: 'q8' };
 }
 
 /**
@@ -188,7 +201,7 @@ export function splitForSpeech(text) {
   let buf = '';
   for (const part of parts) {
     const next = (buf + ' ' + part).trim();
-    if (next.length > 280 && buf) {
+    if (next.length > CHUNK_MERGE_MAX && buf) {
       out.push(buf);
       buf = part.trim();
     } else {

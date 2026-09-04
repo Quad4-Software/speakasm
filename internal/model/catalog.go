@@ -26,7 +26,7 @@ type Catalog struct {
 func DefaultCatalog() Catalog {
 	return Catalog{
 		ModelID: "Kokoro-82M-v1.0-ONNX",
-		Dtype:   "q8",
+		Dtype:   "fp32|q8",
 		Voices: []Voice{
 			{ID: "af_heart", Label: "Heart", Locale: "en-us", Gender: "female", Grade: "A", Default: true, SizeHintMB: 0.3, Notes: "Default American English."},
 			{ID: "af_bella", Label: "Bella", Locale: "en-us", Gender: "female", Grade: "A-", SizeHintMB: 0.3, Notes: "Warm and clear."},
