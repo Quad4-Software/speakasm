@@ -9,6 +9,7 @@
 #   docker/metadata-action@v6.2.0             dc802804100637a589fabce1cb79ff13a1411302
 #   docker/build-push-action@v7.3.0           53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
 #   sigstore/cosign-installer@v4.1.2           6f9f17788090df1f26f669e9d70d6ae9567deba6
+#   anchore/sbom-action/download-syft@v0.24.2  3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
 #
 # Immutable releases: all assets (binaries, checksums, CycloneDX SBOM,
 # cosign checksum bundle) are published in one GoReleaser step. Do not
@@ -75,6 +76,10 @@ jobs:
       - name: Install Cosign
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install Syft
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
