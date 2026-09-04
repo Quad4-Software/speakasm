@@ -21,7 +21,7 @@ BIN        := $(BIN_DIR)/$(APP)
 GO         ?= go
 GOFLAGS    ?=
 LDFLAGS    ?= -s -w -X $(MODULE)/internal/version.Version=$(VERSION)
-VERSION    ?= 0.1.0
+VERSION    ?= 0.2.0
 IMAGE      ?= ghcr.io/quad4-software/$(APP):$(VERSION)
 PLATFORMS  ?= linux/amd64,linux/arm64
 
@@ -58,7 +58,7 @@ help:
 
 stamp-sw:
 	@SHELL_VERSION="$${SHELL_VERSION:-$(VERSION)}"; \
-	if [ -z "$$SHELL_VERSION" ] || [ "$$SHELL_VERSION" = "0.1.0" ]; then \
+	if [ -z "$$SHELL_VERSION" ] || [ "$$SHELL_VERSION" = "0.2.0" ]; then \
 	  SHELL_VERSION=$$(git rev-parse --short=12 HEAD 2>/dev/null || echo dev); \
 	fi; \
 	sed -i "s/const SHELL_VERSION = '[^']*'/const SHELL_VERSION = '$$SHELL_VERSION'/" web/sw.js; \

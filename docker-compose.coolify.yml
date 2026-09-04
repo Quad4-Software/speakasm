@@ -8,12 +8,12 @@ name: speakasm
 
 services:
   speakasm:
-    image: ${IMAGE:-ghcr.io/quad4-software/speakasm:${VERSION:-0.1.0}}
+    image: ${IMAGE:-ghcr.io/quad4-software/speakasm:${VERSION:-0.2.0}}
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        VERSION: "${VERSION:-0.1.0}"
+        VERSION: "${VERSION:-0.2.0}"
         REVISION: ${SOURCE_COMMIT:-unknown}
         CREATED: ${CREATED:-unknown}
     restart: unless-stopped
