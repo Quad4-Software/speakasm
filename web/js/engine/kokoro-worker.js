@@ -62,7 +62,8 @@ async function handle(msg) {
 
     const cleaned = cleanText(String(msg.text || ''));
     const pieces = splitForSpeech(cleaned);
-    self.postMessage({ id, type: 'plan', total: Math.max(1, pieces.length) });
+    const planned = runtime.planTotal(pieces);
+    self.postMessage({ id, type: 'plan', total: Math.max(1, planned || pieces.length) });
 
     if (!cleaned) {
       self.postMessage({

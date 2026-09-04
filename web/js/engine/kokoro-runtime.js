@@ -15,6 +15,7 @@ const WASM_THREAD_CAP = 4;
  *   load: () => Promise<void>,
  *   listVoices: () => string[],
  *   backend: () => BackendConfig | null,
+ *   planTotal: (pieces: string[]) => number,
  *   generate: (text: string, opts: {
  *     voice: string,
  *     speed?: number,
@@ -45,6 +46,28 @@ export async function createKokoroRuntime() {
   /** @type {BackendConfig | null} */
   let active = null;
   let loading = /** @type {Promise<void> | null} */ (null);
+
+  /**
+   * Count the sentence units TextSplitterStream will emit for these pieces.
+   * Merged pieces are re-split by Kokoro, so pieces.length is not the chunk total.
+   * @param {string[]} pieces
+   * @returns {number}
+   */
+  function planTotal(pieces) {
+    if (!pieces.length) {
+      return 0;
+    }
+    const splitter = new TextSplitterStream();
+    for (const piece of pieces) {
+      splitter.push(piece);
+    }
+    splitter.close();
+    let n = 0;
+    for (const _ of splitter) {
+      n += 1;
+    }
+    return n;
+  }
 
   async function load() {
     if (tts) {
@@ -94,6 +117,14 @@ export async function createKokoroRuntime() {
 
     backend() {
       return active;
+    },
+
+    /**
+     * @param {string[]} pieces
+     * @returns {number}
+     */
+    planTotal(pieces) {
+      return planTotal(pieces);
     },
 
     async generate(text, opts) {

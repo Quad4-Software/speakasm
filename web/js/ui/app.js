@@ -278,6 +278,9 @@ export async function bootApp() {
         },
         onChunk: ({ audio, sampleRate, index }) => {
           doneChunks = index + 1;
+          if (doneChunks > total) {
+            total = doneChunks;
+          }
           lastRate = sampleRate;
           setProgress(doneChunks / total);
           setStatus(`Speaking… ${doneChunks}/${total}`);
