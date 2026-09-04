@@ -144,8 +144,10 @@ export async function createKokoroEngine() {
       splitter.close();
       await reader;
 
+      const chunks = parts.length;
       const audio = concat(parts);
-      return { audio, sampleRate, chunks: parts.length };
+      parts.length = 0;
+      return { audio, sampleRate, chunks };
     },
 
     dispose() {
