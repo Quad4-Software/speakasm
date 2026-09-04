@@ -1,5 +1,5 @@
 /* speakasm service worker: offline shell, COOP/COEP isolation, auto-update */
-const CACHE_VERSION = 'speakasm-v0.1.4';
+const CACHE_VERSION = 'speakasm-v0.1.5';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
@@ -18,6 +18,8 @@ const PRECACHE = [
   '/js/text/clean.js',
   '/js/docs/extract.js',
   '/js/engine/kokoro.js',
+  '/js/engine/kokoro-runtime.js',
+  '/js/engine/kokoro-worker.js',
   '/icons/favicon-16.png',
   '/icons/favicon-32.png',
   '/icons/apple-touch-icon.png',

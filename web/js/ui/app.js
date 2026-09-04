@@ -1,6 +1,5 @@
-import { createKokoroEngine, splitForSpeech } from '../engine/kokoro.js';
+import { createKokoroEngine } from '../engine/kokoro.js';
 import { extractFromFile } from '../docs/extract.js';
-import { cleanText } from '../text/clean.js';
 import { encodeWav } from '../audio/wav.js';
 import { createWaveController } from './wave.js';
 import { cacheModelUrls, setupInstallAffordance } from '../pwa.js';
@@ -246,8 +245,7 @@ export async function bootApp() {
 
   async function speak() {
     const raw = els.input.value;
-    const text = cleanText(raw);
-    if (!text) {
+    if (!raw.trim()) {
       showError('Paste some text or open a document first.');
       return;
     }
@@ -266,17 +264,18 @@ export async function bootApp() {
     syncActions();
     syncPlaybackUi();
 
-    const chunks = splitForSpeech(text);
-    const total = Math.max(1, chunks.length);
+    let total = 1;
     setProgress(0.02);
 
     try {
       let doneChunks = 0;
-      const result = await engine.generate(text, {
+      const result = await engine.generate(raw, {
         voice: els.voice.value,
         speed: Number(els.speed.value) || 1,
         signal: abort.signal,
-        pieces: chunks,
+        onPlan: ({ total: n }) => {
+          total = Math.max(1, n);
+        },
         onChunk: ({ audio, sampleRate, index }) => {
           doneChunks = index + 1;
           lastRate = sampleRate;
@@ -786,7 +785,7 @@ export async function bootApp() {
   }
 
   function syncActions() {
-    const hasText = cleanText(els.input.value).length > 0;
+    const hasText = els.input.value.trim().length > 0;
     const audible = Boolean(playSource) || replayPlaying || playQueue.length > 0;
     els.btnSpeak.disabled = busy || !hasText;
     els.btnStop.disabled = !busy && !audible && !replayPaused;

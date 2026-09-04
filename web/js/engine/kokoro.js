@@ -1,23 +1,8 @@
 /**
- * Local Kokoro-82M ONNX engine via vendored kokoro-js.
+ * Main-thread Kokoro engine facade. Inference runs in a dedicated worker.
  */
 
-const MODEL_ID = 'Kokoro-82M-v1.0-ONNX';
-const CHUNK_MERGE_MAX = 450;
-const WASM_THREAD_CAP = 4;
-
-/**
- * @typedef {{
- *   id: string,
- *   label: string,
- *   locale: string,
- *   gender: string,
- *   grade?: string,
- *   default?: boolean,
- *   size_hint_mb: number,
- *   notes?: string,
- * }} VoiceInfo
- */
+export { splitForSpeech } from './kokoro-runtime.js';
 
 /**
  * @typedef {{ device: 'webgpu' | 'wasm', dtype: 'fp32' | 'q8' }} BackendConfig
@@ -33,78 +18,125 @@ const WASM_THREAD_CAP = 4;
  *     speed?: number,
  *     signal?: AbortSignal,
  *     pieces?: string[],
+ *     onPlan?: (info: { total: number }) => void,
  *     onChunk?: (info: { text: string, index: number, audio: Float32Array, sampleRate: number }) => void,
  *   }) => Promise<{ audio: Float32Array, sampleRate: number, chunks: number }>,
  *   dispose: () => void,
  * }>}
  */
 export async function createKokoroEngine() {
-  const { env, KokoroTTS, TextSplitterStream } = await import('/vendor/kokoro/kokoro.js');
-
-  // Fully local: no Hugging Face fetches at runtime.
-  env.allowRemoteModels = false;
-  env.allowLocalModels = true;
-  env.localModelPath = '/models/';
-  env.useBrowserCache = false;
-  if (env.backends?.onnx?.wasm) {
-    env.backends.onnx.wasm.wasmPaths = '/vendor/kokoro/';
-    const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 1 : 1;
-    env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(WASM_THREAD_CAP, cores));
-  } else if ('wasmPaths' in env) {
-    env.wasmPaths = '/vendor/kokoro/';
-  }
-
-  /** @type {any} */
-  let tts = null;
+  const worker = new Worker('/js/engine/kokoro-worker.js', { type: 'module' });
+  let reqId = 0;
   /** @type {BackendConfig | null} */
   let active = null;
-  let loading = /** @type {Promise<void> | null} */ (null);
+  /** @type {Map<number, { resolve: (v: any) => void, reject: (e: any) => void, onPlan?: Function, onChunk?: Function }>} */
+  const pending = new Map();
 
-  async function load() {
-    if (tts) {
+  worker.onmessage = (ev) => {
+    const msg = ev.data || {};
+    const slot = pending.get(msg.id);
+    if (!slot) {
       return;
     }
-    if (loading) {
-      await loading;
+    if (msg.type === 'plan') {
+      slot.onPlan?.({ total: msg.total | 0 });
       return;
     }
-    loading = (async () => {
-      // WebGPU needs fp32. Quantized q8 stays on WASM.
-      const preferred = await pickBackend();
-      try {
-        tts = await KokoroTTS.from_pretrained(MODEL_ID, preferred);
-        active = preferred;
-      } catch (err) {
-        if (preferred.device !== 'wasm') {
-          const fallback = /** @type {BackendConfig} */ ({ device: 'wasm', dtype: 'q8' });
-          tts = await KokoroTTS.from_pretrained(MODEL_ID, fallback);
-          active = fallback;
-        } else {
-          throw err;
-        }
+    if (msg.type === 'chunk') {
+      const audio =
+        msg.audio instanceof Float32Array ? msg.audio : new Float32Array(msg.audio || []);
+      slot.onChunk?.({
+        text: msg.text || '',
+        index: msg.index | 0,
+        audio,
+        sampleRate: msg.sampleRate || 24000,
+      });
+      return;
+    }
+    if (msg.type === 'ready') {
+      active = msg.backend || null;
+      pending.delete(msg.id);
+      slot.resolve(undefined);
+      return;
+    }
+    if (msg.type === 'done') {
+      pending.delete(msg.id);
+      const audio =
+        msg.audio instanceof Float32Array ? msg.audio : new Float32Array(msg.audio || []);
+      slot.resolve({
+        audio,
+        sampleRate: msg.sampleRate || 24000,
+        chunks: msg.chunks | 0,
+      });
+      return;
+    }
+    if (msg.type === 'disposed') {
+      pending.delete(msg.id);
+      slot.resolve(undefined);
+      return;
+    }
+    if (msg.type === 'error') {
+      pending.delete(msg.id);
+      const err =
+        msg.name === 'AbortError'
+          ? new DOMException(msg.error || 'Aborted', 'AbortError')
+          : new Error(msg.error || 'Worker failed');
+      slot.reject(err);
+    }
+  };
+
+  worker.onerror = (ev) => {
+    const err = new Error(ev.message || 'Kokoro worker crashed');
+    for (const [id, slot] of pending) {
+      pending.delete(id);
+      slot.reject(err);
+    }
+  };
+
+  /**
+   * @param {string} type
+   * @param {Record<string, any>} [payload]
+   * @param {{ onPlan?: Function, onChunk?: Function, signal?: AbortSignal }} [hooks]
+   */
+  function call(type, payload = {}, hooks = {}) {
+    const id = ++reqId;
+    return new Promise((resolve, reject) => {
+      const signal = hooks.signal;
+      const onAbort = () => {
+        worker.postMessage({ id, type: 'cancel' });
+        pending.delete(id);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      if (signal?.aborted) {
+        onAbort();
+        return;
       }
-    })();
-    try {
-      await loading;
-    } finally {
-      loading = null;
-    }
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      pending.set(id, {
+        resolve: (v) => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve(v);
+        },
+        reject: (e) => {
+          signal?.removeEventListener('abort', onAbort);
+          reject(e);
+        },
+        onPlan: hooks.onPlan,
+        onChunk: hooks.onChunk,
+      });
+      worker.postMessage({ id, type, ...payload });
+    });
   }
 
   return {
     async load() {
-      await load();
+      await call('load');
     },
 
     listVoices() {
-      if (!tts) {
-        return [];
-      }
-      try {
-        return tts.list_voices();
-      } catch {
-        return [];
-      }
+      return [];
     },
 
     backend() {
@@ -112,154 +144,26 @@ export async function createKokoroEngine() {
     },
 
     async generate(text, opts) {
-      await load();
-      if (!tts) {
-        throw new Error('Kokoro engine failed to load.');
-      }
-      const voice = opts.voice || 'af_heart';
-      const speed = clamp(opts.speed ?? 1, 0.5, 2);
-      const signal = opts.signal;
-      const onChunk = opts.onChunk;
-
-      const splitter = new TextSplitterStream();
-      const stream = tts.stream(splitter, { voice, speed });
-      const parts = /** @type {Float32Array[]} */ ([]);
-      let sampleRate = 24000;
-      let index = 0;
-
-      const reader = (async () => {
-        for await (const item of stream) {
-          if (signal?.aborted) {
-            throw new DOMException('Aborted', 'AbortError');
-          }
-          const audio = toFloat32(item.audio);
-          sampleRate = item.audio?.sampling_rate || item.sampling_rate || sampleRate;
-          parts.push(audio);
-          onChunk?.({
-            text: item.text || '',
-            index,
-            audio,
-            sampleRate,
-          });
-          index += 1;
-        }
-      })();
-
-      // Sentence-sized chunks for lower time-to-first-audio.
-      const pieces = opts.pieces || splitForSpeech(text);
-      for (const piece of pieces) {
-        if (signal?.aborted) {
-          throw new DOMException('Aborted', 'AbortError');
-        }
-        splitter.push(piece);
-      }
-      splitter.close();
-      await reader;
-
-      const chunks = parts.length;
-      const audio = concat(parts);
-      parts.length = 0;
-      return { audio, sampleRate, chunks };
+      return call(
+        'generate',
+        {
+          text,
+          voice: opts.voice,
+          speed: opts.speed,
+        },
+        {
+          signal: opts.signal,
+          onPlan: opts.onPlan,
+          onChunk: opts.onChunk,
+        },
+      );
     },
 
     dispose() {
-      tts = null;
-      active = null;
+      void call('dispose').finally(() => {
+        worker.terminate();
+        active = null;
+      });
     },
   };
-}
-
-/**
- * @returns {Promise<BackendConfig>}
- */
-async function pickBackend() {
-  try {
-    if (!navigator.gpu) {
-      return { device: 'wasm', dtype: 'q8' };
-    }
-    const adapter = await navigator.gpu.requestAdapter();
-    if (adapter) {
-      return { device: 'webgpu', dtype: 'fp32' };
-    }
-  } catch {
-    /* fall through to wasm */
-  }
-  return { device: 'wasm', dtype: 'q8' };
-}
-
-/**
- * @param {string} text
- * @returns {string[]}
- */
-export function splitForSpeech(text) {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized) {
-    return [];
-  }
-  const parts = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [normalized];
-  const out = [];
-  let buf = '';
-  for (const part of parts) {
-    const next = (buf + ' ' + part).trim();
-    if (next.length > CHUNK_MERGE_MAX && buf) {
-      out.push(buf);
-      buf = part.trim();
-    } else {
-      buf = next;
-    }
-  }
-  if (buf) {
-    out.push(buf);
-  }
-  return out;
-}
-
-/**
- * @param {any} audio
- * @returns {Float32Array}
- */
-function toFloat32(audio) {
-  if (!audio) {
-    return new Float32Array(0);
-  }
-  if (audio instanceof Float32Array) {
-    return audio;
-  }
-  if (audio.audio instanceof Float32Array) {
-    return audio.audio;
-  }
-  if (ArrayBuffer.isView(audio.audio)) {
-    return Float32Array.from(audio.audio);
-  }
-  if (ArrayBuffer.isView(audio)) {
-    return Float32Array.from(/** @type {ArrayLike<number>} */ (audio));
-  }
-  return new Float32Array(0);
-}
-
-/**
- * @param {Float32Array[]} parts
- * @returns {Float32Array}
- */
-function concat(parts) {
-  let total = 0;
-  for (const p of parts) {
-    total += p.length;
-  }
-  const out = new Float32Array(total);
-  let offset = 0;
-  for (const p of parts) {
-    out.set(p, offset);
-    offset += p.length;
-  }
-  return out;
-}
-
-/**
- * @param {number} n
- * @param {number} lo
- * @param {number} hi
- */
-function clamp(n, lo, hi) {
-  return Math.min(hi, Math.max(lo, n));
 }

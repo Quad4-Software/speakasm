@@ -1,30 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-// DOMParser/textarea stubs for clean.js in Node.
-class FakeElement {
-  constructor() {
-    this._html = '';
-  }
-  set innerHTML(v) {
-    this._html = String(v)
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-  }
-  get value() {
-    return this._html;
-  }
-}
-
-globalThis.document = {
-  createElement() {
-    return new FakeElement();
-  },
-};
-
 const { cleanText } = await import('./clean.js');
 
 describe('cleanText', () => {
@@ -38,5 +14,9 @@ describe('cleanText', () => {
 
   it('returns empty for blank input', () => {
     assert.equal(cleanText('   '), '');
+  });
+
+  it('decodes entities without DOM', () => {
+    assert.equal(cleanText('A &amp; B &#39;C&#39;'), "A & B 'C'");
   });
 });

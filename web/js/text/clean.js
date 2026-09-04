@@ -64,11 +64,25 @@ export function htmlToText(html) {
 }
 
 /**
+ * Decode common HTML entities without touching the DOM.
  * @param {string} text
  * @returns {string}
  */
 function decodeEntities(text) {
-  const el = document.createElement('textarea');
-  el.innerHTML = text;
-  return el.value;
+  return text
+    .replace(/&nbsp;/gi, '\u00a0')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+      const code = Number.parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    })
+    .replace(/&#(\d+);/g, (match, dec) => {
+      const code = Number.parseInt(dec, 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    })
+    .replace(/&amp;/gi, '&');
 }
