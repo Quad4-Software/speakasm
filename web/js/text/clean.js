@@ -28,10 +28,15 @@ export function cleanText(input) {
   text = text.replace(/^\s*\d+\.\s+/gm, '');
   text = text.replace(/[*_~]{1,3}/g, '');
 
-  // HTML leftovers.
-  text = text.replace(/<script[\s\S]*?<\/script>/gi, ' ');
-  text = text.replace(/<style[\s\S]*?<\/style>/gi, ' ');
-  text = text.replace(/<[^>]+>/g, ' ');
+  // HTML leftovers. Prefer the DOM when available so script/style bodies are
+  // dropped without fragile tag regexes.
+  if (typeof DOMParser !== 'undefined' && /<[a-z!?/]/i.test(text)) {
+    text = htmlFragmentToText(text);
+  } else {
+    text = text.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ');
+    text = text.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ');
+    text = text.replace(/<\/?[a-zA-Z][^>]*>/g, ' ');
+  }
   text = decodeEntities(text);
 
   // Page markers and decorative lines.
@@ -56,11 +61,20 @@ export function htmlToText(html) {
   if (!html) {
     return '';
   }
-  const doc = new DOMParser().parseFromString(String(html), 'text/html');
+  return cleanText(htmlFragmentToText(String(html)));
+}
+
+/**
+ * Extract visible text from an HTML fragment via the DOM.
+ * Output is plain text for TTS, never reinserted as HTML.
+ * @param {string} html
+ * @returns {string}
+ */
+function htmlFragmentToText(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
   doc.querySelectorAll('script, style, nav, header, footer, aside, noscript, svg, img').forEach((el) => el.remove());
   const body = doc.body || doc.documentElement;
-  const text = body ? body.textContent || '' : '';
-  return cleanText(text);
+  return body ? body.textContent || '' : '';
 }
 
 /**

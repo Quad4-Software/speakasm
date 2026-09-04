@@ -135,8 +135,12 @@ async function extractDocx(file) {
     .replace(/<w:tab\b[^/]*\/>/g, '\t')
     .replace(/<w:br\b[^/]*\/>/g, '\n')
     .replace(/<\/w:p>/g, '\n');
-  const text = withBreaks.replace(/<[^>]+>/g, '');
-  return cleanText(decodeXml(text));
+  // OOXML to plain text via XML DOM. Not HTML sanitization.
+  const doc = new DOMParser().parseFromString(withBreaks, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length > 0) {
+    throw new Error('Invalid DOCX: document.xml parse failed');
+  }
+  return cleanText(doc.documentElement?.textContent || '');
 }
 
 /**
@@ -195,17 +199,4 @@ function joinPath(base, rel) {
     stack.push(part);
   }
   return stack.join('/');
-}
-
-/**
- * @param {string} text
- * @returns {string}
- */
-function decodeXml(text) {
-  return text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
 }
