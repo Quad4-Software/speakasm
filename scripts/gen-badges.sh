@@ -89,6 +89,28 @@ if live:
         "message": host,
     })
 
+openssf_msg = "scorecard"
+try:
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://api.scorecard.dev/projects/github.com/{repo}",
+        headers={"Accept": "application/json", "User-Agent": f"{name}-badges"},
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        score_data = json.load(resp)
+    score = score_data.get("score")
+    if isinstance(score, (int, float)):
+        openssf_msg = f"{score:.1f}/10"
+except Exception:
+    pass
+
+write("openssf.json", {
+    "label": "openssf",
+    "message": openssf_msg,
+    "namedLogo": "openssf",
+    "logoColor": color,
+})
+
 # Markdown snippet for README (shields endpoint + CI)
 owner_repo = repo
 raw = f"https://raw.githubusercontent.com/{owner_repo}/master/badges"
@@ -104,6 +126,7 @@ ci = (
 
 lines = [
     f'[![CI]({ci})](https://github.com/{owner_repo}/actions/workflows/ci.yml)',
+    f'[![OpenSSF]({endpoint("openssf.json")})](https://scorecard.dev/viewer/?uri=github.com/{owner_repo})',
     f'[![version]({endpoint("version.json")})](https://github.com/{owner_repo}/releases)',
     f'[![license]({endpoint("license.json")})](https://github.com/{owner_repo}/blob/master/LICENSE)',
     f'[![go]({endpoint("go.json")})](https://go.dev/dl/)',
