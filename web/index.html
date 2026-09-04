@@ -88,10 +88,6 @@
 
     <div class="workspace">
       <section class="panel panel-input" aria-label="Write">
-        <div class="hero-visual" aria-hidden="true">
-          <canvas id="wave" width="1200" height="280"></canvas>
-        </div>
-
         <div class="controls">
           <div class="control-row">
             <label class="field">
@@ -110,7 +106,7 @@
               <span>Text</span>
               <span id="char-count" class="char-count">0 chars</span>
             </span>
-            <textarea id="input" rows="10" placeholder="Paste text here, or open a TXT / Markdown / HTML / EPUB / DOCX file." spellcheck="true"></textarea>
+            <textarea id="input" rows="8" placeholder="Paste text here, or open a TXT / Markdown / HTML / EPUB / DOCX file." spellcheck="true"></textarea>
           </label>
 
           <div class="cta-row">
@@ -120,6 +116,7 @@
               Open a file
               <input type="file" id="file" accept=".txt,.md,.markdown,.html,.htm,.epub,.docx,.rtf,.csv,.log,text/plain,text/markdown,text/html,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
             </label>
+            <button type="button" id="btn-clear" class="linkish" disabled>Clear</button>
           </div>
 
           <div class="status-row">
@@ -134,15 +131,21 @@
         </div>
       </section>
 
-      <section class="panel panel-result" aria-label="Speech">
-        <div class="result-toolbar">
-          <h2>Cleaned text</h2>
-          <div class="result-actions">
-            <button type="button" id="btn-download" class="linkish" disabled>Download WAV</button>
-            <button type="button" id="btn-clear" class="linkish" disabled>Clear</button>
-          </div>
+      <section class="panel panel-playback" aria-label="Playback" id="playback">
+        <div class="hero-visual" aria-hidden="true">
+          <canvas id="wave" width="1200" height="160"></canvas>
         </div>
-        <div id="preview" class="transcript" tabindex="0" aria-live="polite"></div>
+        <div class="playback-bar">
+          <button type="button" id="btn-play" class="cta play" disabled aria-label="Play">Play</button>
+          <div class="scrub-wrap">
+            <input type="range" id="scrub" min="0" max="1000" value="0" step="1" disabled aria-label="Seek">
+            <div class="time-row">
+              <span id="time-cur">0:00</span>
+              <span id="time-total">0:00</span>
+            </div>
+          </div>
+          <button type="button" id="btn-download" class="cta secondary" disabled>Download WAV</button>
+        </div>
         <p id="meta" class="meta" hidden></p>
       </section>
     </div>

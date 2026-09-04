@@ -16,6 +16,7 @@ export async function bootApp() {
     input: /** @type {HTMLTextAreaElement} */ (document.getElementById('input')),
     btnSpeak: /** @type {HTMLButtonElement} */ (document.getElementById('btn-speak')),
     btnStop: /** @type {HTMLButtonElement} */ (document.getElementById('btn-stop')),
+    btnPlay: /** @type {HTMLButtonElement} */ (document.getElementById('btn-play')),
     btnDownload: /** @type {HTMLButtonElement} */ (document.getElementById('btn-download')),
     btnClear: /** @type {HTMLButtonElement} */ (document.getElementById('btn-clear')),
     btnOffline: /** @type {HTMLButtonElement} */ (document.getElementById('btn-offline')),
@@ -29,11 +30,14 @@ export async function bootApp() {
     progress: /** @type {HTMLElement} */ (document.getElementById('progress')),
     progressTrack: /** @type {HTMLElement} */ (document.querySelector('.progress-track')),
     error: /** @type {HTMLElement} */ (document.getElementById('error')),
-    preview: /** @type {HTMLElement} */ (document.getElementById('preview')),
     meta: /** @type {HTMLElement} */ (document.getElementById('meta')),
     wave: /** @type {HTMLCanvasElement} */ (document.getElementById('wave')),
     dropOverlay: /** @type {HTMLElement} */ (document.getElementById('drop-overlay')),
     charCount: /** @type {HTMLElement} */ (document.getElementById('char-count')),
+    scrub: /** @type {HTMLInputElement} */ (document.getElementById('scrub')),
+    timeCur: /** @type {HTMLElement} */ (document.getElementById('time-cur')),
+    timeTotal: /** @type {HTMLElement} */ (document.getElementById('time-total')),
+    playback: /** @type {HTMLElement} */ (document.getElementById('playback')),
   };
 
   const wave = createWaveController(els.wave);
@@ -64,6 +68,13 @@ export async function bootApp() {
   /** @type {Array<{ pcm: Float32Array, rate: number }>} */
   let playQueue = [];
   let playPump = false;
+  let streaming = false;
+  let replayPlaying = false;
+  let replayPaused = false;
+  let replayOffset = 0;
+  let replayStartedAt = 0;
+  let scrubbing = false;
+  let clockWatch = 0;
 
   setBusy(true, 'Getting ready...');
   try {
@@ -86,28 +97,46 @@ export async function bootApp() {
   els.input.addEventListener('input', () => {
     updateCharCount();
     syncActions();
-    paintPreview();
   });
   els.speed.addEventListener('input', () => {
     els.speedVal.textContent = `${Number(els.speed.value).toFixed(2)}x`;
   });
   els.btnSpeak.addEventListener('click', () => void speak());
   els.btnStop.addEventListener('click', () => stopAll());
+  els.btnPlay.addEventListener('click', () => void toggleReplay());
   els.btnDownload.addEventListener('click', () => downloadWav());
   els.btnClear.addEventListener('click', () => clearAll());
   els.file.addEventListener('change', () => void onFile());
   els.btnOffline.addEventListener('click', () => void saveOffline());
 
-  wireDrop();
+  els.scrub.addEventListener('pointerdown', () => {
+    scrubbing = true;
+  });
+  els.scrub.addEventListener('pointerup', () => {
+    scrubbing = false;
+    seekReplay(Number(els.scrub.value) / 1000);
+  });
+  els.scrub.addEventListener('change', () => {
+    scrubbing = false;
+    seekReplay(Number(els.scrub.value) / 1000);
+  });
+  els.scrub.addEventListener('input', () => {
+    if (!lastAudio) {
+      return;
+    }
+    const ratio = Number(els.scrub.value) / 1000;
+    const dur = lastAudio.length / lastRate;
+    els.timeCur.textContent = formatDuration(ratio * dur);
+  });
 
+  wireDrop();
   updateCharCount();
-  paintPreview();
+  syncPlaybackUi();
 
   /**
    * @returns {Promise<typeof voices>}
    */
   async function loadVoices() {
-    // Prefer static catalog (GitHub Pages has no Go /api). Fall back to API for Docker.
     const sources = ['/voices.json', '/api/voices'];
     for (const url of sources) {
       try {
@@ -155,14 +184,17 @@ export async function bootApp() {
       return;
     }
 
-    stopPlayback();
+    stopPlayback(true);
     abort = new AbortController();
+    streaming = true;
     setBusy(true, 'Speaking...');
     wave.setMode('speaking');
     els.livePill.classList.add('is-on');
+    els.playback.classList.add('is-active');
     clearError();
     lastAudio = null;
     syncActions();
+    syncPlaybackUi();
 
     const chunks = splitForSpeech(text);
     const total = Math.max(1, chunks.length);
@@ -185,12 +217,14 @@ export async function bootApp() {
 
       lastAudio = result.audio.length ? result.audio : concatAudio(parts);
       lastRate = result.sampleRate || lastRate;
+      replayOffset = 0;
       setProgress(1);
       setBusy(false, 'Done.');
       els.status.classList.add('is-ok');
       els.meta.hidden = false;
       els.meta.textContent = `${formatDuration(lastAudio.length / lastRate)} · ${result.chunks} chunk${result.chunks === 1 ? '' : 's'} · ${els.voice.value}`;
       syncActions();
+      syncPlaybackUi();
     } catch (err) {
       if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') {
         setBusy(false, 'Stopped.');
@@ -199,23 +233,143 @@ export async function bootApp() {
         showError(friendlyError(err));
       }
     } finally {
+      streaming = false;
       els.livePill.classList.remove('is-on');
       wave.setMode('idle');
       wave.setLive(null);
       abort = null;
       hideProgressSoon();
+      syncActions();
+      syncPlaybackUi();
     }
   }
 
   function stopAll() {
     abort?.abort();
-    stopPlayback();
+    stopPlayback(true);
     els.livePill.classList.remove('is-on');
     wave.setMode('idle');
     wave.setLive(null);
     if (busy) {
       setBusy(false, 'Stopped.');
     }
+    syncActions();
+    syncPlaybackUi();
+  }
+
+  async function toggleReplay() {
+    if (!lastAudio || streaming || busy) {
+      return;
+    }
+    if (replayPlaying && !replayPaused) {
+      pauseReplay();
+      return;
+    }
+    if (replayPaused) {
+      await resumeReplay();
+      return;
+    }
+    await startReplay(replayOffset);
+  }
+
+  /**
+   * @param {number} [fromRatio]
+   */
+  async function startReplay(fromRatio = 0) {
+    if (!lastAudio) {
+      return;
+    }
+    stopStreamQueue();
+    ensureAudio();
+    if (!playCtx || !analyser) {
+      return;
+    }
+    if (playCtx.state === 'suspended') {
+      await playCtx.resume();
+    }
+
+    const dur = lastAudio.length / lastRate;
+    const startSec = Math.min(Math.max(0, fromRatio), 0.999) * dur;
+    const startSample = Math.floor(startSec * lastRate);
+    const pcm = lastAudio.subarray(startSample);
+    if (!pcm.length) {
+      replayOffset = 0;
+      syncPlaybackUi();
+      return;
+    }
+
+    const buffer = playCtx.createBuffer(1, pcm.length, lastRate);
+    buffer.copyToChannel(pcm, 0);
+    const source = playCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(analyser);
+    analyser.connect(playCtx.destination);
+    playSource = source;
+    replayPlaying = true;
+    replayPaused = false;
+    replayOffset = startSec / dur;
+    replayStartedAt = playCtx.currentTime - startSec;
+    source.start();
+    startAnalyse();
+    startClock();
+    syncActions();
+    syncPlaybackUi();
+
+    source.onended = () => {
+      if (playSource !== source) {
+        return;
+      }
+      playSource = null;
+      replayPlaying = false;
+      replayPaused = false;
+      replayOffset = 0;
+      stopAnalyse();
+      stopClock();
+      wave.setMode('idle');
+      wave.setLive(null);
+      syncActions();
+      syncPlaybackUi();
+    };
+  }
+
+  function pauseReplay() {
+    if (!replayPlaying || !playCtx || replayPaused) {
+      return;
+    }
+    const dur = lastAudio ? lastAudio.length / lastRate : 0;
+    if (dur > 0) {
+      replayOffset = Math.min(0.999, Math.max(0, (playCtx.currentTime - replayStartedAt) / dur));
+    }
+    try {
+      playSource?.stop();
+    } catch {
+      /* ignore */
+    }
+    playSource = null;
+    replayPaused = true;
+    replayPlaying = false;
+    stopAnalyse();
+    stopClock();
+    wave.setMode('idle');
+    wave.setLive(null);
+    syncActions();
+    syncPlaybackUi();
+  }
+
+  async function resumeReplay() {
+    await startReplay(replayOffset);
+  }
+
+  /**
+   * @param {number} ratio
+   */
+  function seekReplay(ratio) {
+    replayOffset = Math.min(1, Math.max(0, ratio));
+    if (replayPlaying || replayPaused) {
+      void startReplay(replayOffset);
+      return;
+    }
+    syncPlaybackUi();
   }
 
   /**
@@ -284,6 +438,7 @@ export async function bootApp() {
     if (!analyser) {
       return;
     }
+    wave.setMode('speaking');
     const data = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
       if (!analyser) {
@@ -297,8 +452,26 @@ export async function bootApp() {
     analyseWatch = requestAnimationFrame(tick);
   }
 
-  function stopPlayback() {
+  function stopAnalyse() {
     cancelAnimationFrame(analyseWatch);
+    analyseWatch = 0;
+  }
+
+  function startClock() {
+    stopClock();
+    const tick = () => {
+      syncPlaybackUi();
+      clockWatch = requestAnimationFrame(tick);
+    };
+    clockWatch = requestAnimationFrame(tick);
+  }
+
+  function stopClock() {
+    cancelAnimationFrame(clockWatch);
+    clockWatch = 0;
+  }
+
+  function stopStreamQueue() {
     playQueue = [];
     try {
       playSource?.stop();
@@ -306,6 +479,22 @@ export async function bootApp() {
       /* ignore */
     }
     playSource = null;
+  }
+
+  /**
+   * @param {boolean} [resetOffset]
+   */
+  function stopPlayback(resetOffset = false) {
+    stopStreamQueue();
+    stopAnalyse();
+    stopClock();
+    playPump = false;
+    streaming = false;
+    replayPlaying = false;
+    replayPaused = false;
+    if (resetOffset) {
+      replayOffset = 0;
+    }
     wave.setLive(null);
   }
 
@@ -327,12 +516,14 @@ export async function bootApp() {
     stopAll();
     els.input.value = '';
     lastAudio = null;
+    replayOffset = 0;
     els.meta.hidden = true;
     els.meta.textContent = '';
+    els.playback.classList.remove('is-active');
     clearError();
     updateCharCount();
-    paintPreview();
     syncActions();
+    syncPlaybackUi();
     setStatus('Ready when you are.');
     els.status.classList.add('is-ok');
   }
@@ -360,7 +551,6 @@ export async function bootApp() {
       }
       els.input.value = text;
       updateCharCount();
-      paintPreview();
       syncActions();
       setBusy(false, `Loaded ${source}.`);
       els.status.classList.add('is-ok');
@@ -408,7 +598,6 @@ export async function bootApp() {
     for (const v of voices) {
       urls.push(`/models/Kokoro-82M-v1.0-ONNX/voices/${v.id}.bin`);
     }
-    // Pick up onnxruntime wasm siblings if present.
     try {
       const res = await fetch('/vendor/kokoro/manifest.json', { credentials: 'same-origin' });
       if (res.ok) {
@@ -459,11 +648,6 @@ export async function bootApp() {
     });
   }
 
-  function paintPreview() {
-    const text = cleanText(els.input.value);
-    els.preview.textContent = text;
-  }
-
   function updateCharCount() {
     const n = els.input.value.length;
     els.charCount.textContent = `${n.toLocaleString()} chars`;
@@ -471,10 +655,44 @@ export async function bootApp() {
 
   function syncActions() {
     const hasText = cleanText(els.input.value).length > 0;
+    const audible = Boolean(playSource) || replayPlaying || playQueue.length > 0;
     els.btnSpeak.disabled = busy || !hasText;
-    els.btnStop.disabled = !busy && !playSource;
+    els.btnStop.disabled = !busy && !audible && !replayPaused;
+    els.btnPlay.disabled = !lastAudio || busy || streaming;
     els.btnDownload.disabled = !lastAudio;
-    els.btnClear.disabled = busy && !els.input.value && !lastAudio;
+    els.btnClear.disabled = busy || (!els.input.value && !lastAudio);
+    els.scrub.disabled = !lastAudio || busy || streaming;
+  }
+
+  function syncPlaybackUi() {
+    const dur = lastAudio ? lastAudio.length / lastRate : 0;
+    let cur = 0;
+    if (lastAudio && replayPlaying && playCtx && !scrubbing) {
+      cur = Math.min(dur, Math.max(0, playCtx.currentTime - replayStartedAt));
+      replayOffset = dur > 0 ? cur / dur : 0;
+    } else if (lastAudio) {
+      cur = replayOffset * dur;
+    }
+
+    els.timeCur.textContent = formatDuration(cur);
+    els.timeTotal.textContent = formatDuration(dur);
+    if (!scrubbing) {
+      els.scrub.value = String(Math.round((dur > 0 ? cur / dur : 0) * 1000));
+    }
+
+    if (replayPlaying && !replayPaused) {
+      els.btnPlay.textContent = 'Pause';
+      els.btnPlay.setAttribute('aria-label', 'Pause');
+      els.playback.classList.add('is-playing');
+    } else {
+      els.btnPlay.textContent = 'Play';
+      els.btnPlay.setAttribute('aria-label', 'Play');
+      els.playback.classList.remove('is-playing');
+    }
+
+    if (lastAudio || streaming || busy) {
+      els.playback.classList.add('is-active');
+    }
   }
 
   /**

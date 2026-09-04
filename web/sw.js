@@ -1,5 +1,5 @@
 /* speakasm service worker: offline shell, COOP/COEP isolation, auto-update */
-const CACHE_VERSION = 'speakasm-v0.1.1';
+const CACHE_VERSION = 'speakasm-v0.1.2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
