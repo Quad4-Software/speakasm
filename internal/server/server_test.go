@@ -131,7 +131,7 @@ func TestPWAAssets(t *testing.T) {
 
 func mustGet(ctx context.Context, t *testing.T, client *http.Client, url string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}
