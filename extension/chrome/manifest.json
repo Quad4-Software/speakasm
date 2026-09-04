@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "speakasm",
+  "version": "0.1.0",
+  "description": "Offline text-to-speech for selection and page text using on-device Kokoro voices.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "speakasm",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://speakasm.quad4.io/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "https://speakasm.quad4.io/*",
+      "http://127.0.0.1/*",
+      "http://localhost/*"
+    ]
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-ancestors 'none';"
+  },
+  "commands": {
+    "speak-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+V"
+      },
+      "description": "Speak the selection"
+    }
+  }
+}

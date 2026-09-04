@@ -119,6 +119,12 @@ release:
   draft: false
   prerelease: auto
   name_template: "speakasm {{.Tag}}"
+  extra_files:
+    - glob: ./web/build/*.crx
+    - glob: ./web/build/*.xpi
+    - glob: ./web/build/*.zip
+    - glob: ./web/build/SHA256SUMS
+    - glob: ./web/build/manifest.json
   footer: |
     ## Docker
 
@@ -133,3 +139,11 @@ release:
 
     Unpack the archive for your OS/arch, then point `-web` at a `web/` tree with models
     (`make assets` after cloning), or use the container image for a full offline stack.
+
+    ## Extensions
+
+    Browser builds are attached to this release and also published at
+    https://speakasm.quad4.io/build/
+
+    - `speakasm-chrome.crx` / `speakasm-chrome.zip`
+    - `speakasm-firefox.xpi`

@@ -35,7 +35,7 @@ NPM           ?= npm
 SPEAKASM_URL  ?= http://127.0.0.1:8080
 SHOT_DIR      := scripts/screenshots
 
-.PHONY: all assets build run docker docker-push badges test test-go test-js lint sec check fmt vet staticcheck screenshots stamp-sw clean help
+.PHONY: all assets build run docker docker-push badges test test-go test-js lint sec check fmt vet staticcheck screenshots stamp-sw clean help extensions
 
 all: assets build
 
@@ -43,6 +43,7 @@ help:
 	@printf '%s\n' \
 		'assets        fetch offline Kokoro ONNX/voices/fonts/vendor (scripts/fetch-assets.sh [--shell])' \
 		'stamp-sw      set SHELL_VERSION in web/sw.js (SHELL_VERSION=... or git sha)' \
+		'extensions    build Chrome CRX/ZIP + Firefox XPI into web/build' \
 		'build         compile $(BIN)' \
 		'run           ensure assets then serve :8080' \
 		'docker        build $(IMAGE) with full offline assets' \
@@ -62,6 +63,10 @@ stamp-sw:
 	fi; \
 	sed -i "s/const SHELL_VERSION = '[^']*'/const SHELL_VERSION = '$$SHELL_VERSION'/" web/sw.js; \
 	printf 'stamped SHELL_VERSION=%s\n' "$$SHELL_VERSION"
+
+extensions:
+	bash scripts/build-extensions.sh
+
 
 assets:
 	@bash scripts/fetch-assets.sh

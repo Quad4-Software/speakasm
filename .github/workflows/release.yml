@@ -1,6 +1,7 @@
 # Pinned actions (bump tag and SHA together when upgrading):
 #   actions/checkout@v7.0.1                   3d3c42e5aac5ba805825da76410c181273ba90b1
 #   actions/setup-go@v7.0.0                   b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+#   actions/setup-node@v7.0.0                 820762786026740c76f36085b0efc47a31fe5020
 #   goreleaser/goreleaser-action@v7.2.3       f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
 #   docker/setup-qemu-action@v4.3.0           1f40c72289eff860ee54a304f1438e3cff362e0a
 #   docker/setup-buildx-action@v4.3.0         37fe631027851001ddb9b187196cc803df7f5f0e
@@ -62,6 +63,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Build browser extensions
+        run: make extensions
 
       - name: Install Cosign
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'

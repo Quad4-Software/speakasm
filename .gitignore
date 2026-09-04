@@ -14,3 +14,5 @@ web/vendor/kokoro/
 web/vendor/jszip/
 scripts/vendor/node_modules/
 scripts/screenshots/node_modules/
+.build/
+web/build/

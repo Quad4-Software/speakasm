@@ -152,7 +152,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname === '/sw.js') {
+  if (url.pathname === '/sw.js' || url.pathname.startsWith('/build/')) {
     event.respondWith(networkOnly(req));
     return;
   }
