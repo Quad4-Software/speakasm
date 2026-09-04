@@ -1,0 +1,55 @@
+# Local / generic Compose stack for speakasm.
+# Build uses the pinned multi-stage Dockerfile (Alpine 3.24 + Go digests).
+
+name: speakasm
+
+services:
+  speakasm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.1.0"
+        REVISION: "${REVISION:-local}"
+        CREATED: "${CREATED:-unknown}"
+    image: speakasm:0.1.0
+    container_name: speakasm
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SPEAKASM_ADDR: ${SPEAKASM_ADDR:-:8080}
+      SPEAKASM_WEB: ${SPEAKASM_WEB:-/app/web}
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,uid=65532,gid=65532
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    ulimits:
+      nproc: 256
+      nofile:
+        soft: 1024
+        hard: 2048
+    mem_limit: 1024m
+    mem_reservation: 256m
+    cpus: 2.0
+    cpu_shares: 512
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - speakasm
+
+networks:
+  speakasm:
+    driver: bridge
+    internal: false

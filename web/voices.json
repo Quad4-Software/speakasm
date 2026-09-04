@@ -1,0 +1,20 @@
+{
+  "model_id": "Kokoro-82M-v1.0-ONNX",
+  "dtype": "q8",
+  "voices": [
+    {"id": "af_heart", "label": "Heart", "locale": "en-us", "gender": "female", "grade": "A", "default": true, "size_hint_mb": 0.3, "notes": "Default American English."},
+    {"id": "af_bella", "label": "Bella", "locale": "en-us", "gender": "female", "grade": "A-", "size_hint_mb": 0.3, "notes": "Warm and clear."},
+    {"id": "af_sarah", "label": "Sarah", "locale": "en-us", "gender": "female", "grade": "C+", "size_hint_mb": 0.3},
+    {"id": "af_nicole", "label": "Nicole", "locale": "en-us", "gender": "female", "grade": "B-", "size_hint_mb": 0.3},
+    {"id": "af_nova", "label": "Nova", "locale": "en-us", "gender": "female", "grade": "C", "size_hint_mb": 0.3},
+    {"id": "af_sky", "label": "Sky", "locale": "en-us", "gender": "female", "grade": "C-", "size_hint_mb": 0.3},
+    {"id": "am_adam", "label": "Adam", "locale": "en-us", "gender": "male", "grade": "F+", "size_hint_mb": 0.3},
+    {"id": "am_michael", "label": "Michael", "locale": "en-us", "gender": "male", "grade": "C+", "size_hint_mb": 0.3},
+    {"id": "am_fenrir", "label": "Fenrir", "locale": "en-us", "gender": "male", "grade": "C+", "size_hint_mb": 0.3},
+    {"id": "am_puck", "label": "Puck", "locale": "en-us", "gender": "male", "grade": "C+", "size_hint_mb": 0.3},
+    {"id": "bf_emma", "label": "Emma", "locale": "en-gb", "gender": "female", "grade": "B-", "size_hint_mb": 0.3, "notes": "British English."},
+    {"id": "bf_isabella", "label": "Isabella", "locale": "en-gb", "gender": "female", "grade": "C", "size_hint_mb": 0.3},
+    {"id": "bm_george", "label": "George", "locale": "en-gb", "gender": "male", "grade": "C", "size_hint_mb": 0.3},
+    {"id": "bm_lewis", "label": "Lewis", "locale": "en-gb", "gender": "male", "grade": "D+", "size_hint_mb": 0.3}
+  ]
+}

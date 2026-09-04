@@ -1,0 +1,15 @@
+bin/
+dist/
+*.exe
+*.test
+*.out
+.DS_Store
+.idea/
+.vscode/
+coverage.out
+coverage.html
+web/models/
+web/vendor/kokoro/
+web/vendor/jszip/
+scripts/vendor/node_modules/
+scripts/vendor/package-lock.json
