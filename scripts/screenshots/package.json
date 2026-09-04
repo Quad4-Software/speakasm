@@ -1,0 +1,13 @@
+{
+  "name": "speakasm-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Capture README and docs screenshots of the speakasm UI",
+  "scripts": {
+    "capture": "node capture.mjs",
+    "install:browser": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}

@@ -1,0 +1,93 @@
+# Pinned actions (bump tag and SHA together when upgrading):
+#   actions/checkout@v7.0.1                 3d3c42e5aac5ba805825da76410c181273ba90b1
+#   actions/setup-node@v7.0.0               820762786026740c76f36085b0efc47a31fe5020
+#   actions/upload-artifact@v7.0.1          043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+#
+# Secure use: least-privilege GITHUB_TOKEN, pin actions to full commit SHAs,
+# pull_request (not pull_request_target), no untrusted checkout with secrets.
+# https://docs.github.com/en/actions/reference/security/secure-use
+
+name: Screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Page URL to capture (leave empty to serve local web/)"
+        required: false
+        default: ""
+  push:
+    branches:
+      - master
+    paths:
+      - "web/**"
+      - "scripts/screenshots/**"
+      - ".github/workflows/screenshots.yml"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "web/**"
+      - "scripts/screenshots/**"
+      - ".github/workflows/screenshots.yml"
+
+concurrency:
+  group: screenshots-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CAPTURE_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.url || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: scripts/screenshots/package-lock.json
+
+      - name: Fetch shell assets
+        if: env.CAPTURE_URL == ''
+        run: bash scripts/fetch-assets.sh --shell
+
+      - name: Install screenshot deps
+        working-directory: scripts/screenshots
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Serve local UI
+        if: env.CAPTURE_URL == ''
+        run: |
+          python3 -m http.server 8080 --directory web &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "local server did not become ready" >&2
+          exit 1
+
+      - name: Capture
+        env:
+          SPEAKASM_URL: ${{ env.CAPTURE_URL != '' && env.CAPTURE_URL || 'http://127.0.0.1:8080' }}
+        run: node scripts/screenshots/capture.mjs --ready-ms 15000
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: speakasm-screenshots
+          path: docs/screenshots/
+          if-no-files-found: error
+          retention-days: 14
