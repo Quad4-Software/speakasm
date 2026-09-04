@@ -33,7 +33,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 		-o /out/speakasm \
 		./cmd/speakasm
 
-FROM node:22-alpine@${NODE_DIGEST} AS vendor
+# Vendor JS on the build host arch. Assets are arch-independent and npm under
+# qemu-user for linux/arm64 hits illegal instruction on GitHub Actions.
+FROM --platform=$BUILDPLATFORM node:22-alpine@${NODE_DIGEST} AS vendor
 
 WORKDIR /src
 COPY scripts/vendor/package.json scripts/vendor/package-lock.json ./scripts/vendor/

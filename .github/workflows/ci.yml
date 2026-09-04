@@ -193,3 +193,5 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
+          # Intentional public CRX update signing key for site-hosted extensions.
+          skip-files: extension/signing.pem

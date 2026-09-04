@@ -129,8 +129,10 @@ pack_crx() {
     local pack_dir="$STAGE/chrome"
     local packed_crx="$STAGE/chrome.crx"
     rm -f "$packed_crx"
-    chromium --headless=new --pack-extension="$pack_dir" --pack-extension-key="$KEY" >/dev/null 2>&1 \
-      || chromium --pack-extension="$pack_dir" --pack-extension-key="$KEY"
+    chromium --headless=new --no-sandbox --disable-gpu \
+      --pack-extension="$pack_dir" --pack-extension-key="$KEY" >/dev/null 2>&1 \
+      || chromium --no-sandbox --disable-gpu \
+        --pack-extension="$pack_dir" --pack-extension-key="$KEY"
     mv -f "$packed_crx" "$CHROME_CRX"
     return
   fi
