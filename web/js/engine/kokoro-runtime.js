@@ -5,6 +5,13 @@
 const MODEL_ID = 'Kokoro-82M-v1.0-ONNX';
 const CHUNK_MERGE_MAX = 450;
 const WASM_THREAD_CAP = 4;
+const KOKORO_RATE = 24000;
+const WEBGPU_PROBE_TEXT =
+  'Every single morning the baker kneaded the soft dough by hand before the shop opened.';
+const WASM_FALLBACK = /** @type {BackendConfig} */ ({ device: 'wasm', dtype: 'q8' });
+
+/** Session flag: WebGPU produced non-speech audio on this page load. */
+let webgpuAudioBad = false;
 
 /**
  * @typedef {{ device: 'webgpu' | 'wasm', dtype: 'fp32' | 'q8' }} BackendConfig
@@ -69,6 +76,40 @@ export async function createKokoroRuntime() {
     return n;
   }
 
+  /**
+   * @param {BackendConfig} cfg
+   */
+  async function loadModel(cfg) {
+    tts = await KokoroTTS.from_pretrained(MODEL_ID, cfg);
+    active = cfg;
+  }
+
+  /**
+   * WebGPU EP can emit unintelligible HF noise on some GPUs/drivers.
+   * Probe once and pin wasm if the output is not speech-like.
+   */
+  async function ensureWebGpuAudioQuality() {
+    if (!tts || active?.device !== 'webgpu') {
+      return;
+    }
+    if (webgpuAudioBad) {
+      await loadModel(WASM_FALLBACK);
+      return;
+    }
+    try {
+      const probe = await tts.generate(WEBGPU_PROBE_TEXT, { voice: 'af_heart' });
+      const { pcm } = unpackAudio(probe);
+      if (isSpeechLikePcm(pcm)) {
+        return;
+      }
+    } catch {
+      /* treat probe failure as bad webgpu audio */
+    }
+    webgpuAudioBad = true;
+    console.warn('speakasm: WebGPU audio failed quality probe; falling back to wasm/q8');
+    await loadModel(WASM_FALLBACK);
+  }
+
   async function load() {
     if (tts) {
       return;
@@ -80,13 +121,11 @@ export async function createKokoroRuntime() {
     loading = (async () => {
       const preferred = await pickBackend();
       try {
-        tts = await KokoroTTS.from_pretrained(MODEL_ID, preferred);
-        active = preferred;
+        await loadModel(preferred);
+        await ensureWebGpuAudioQuality();
       } catch (err) {
         if (preferred.device !== 'wasm') {
-          const fallback = /** @type {BackendConfig} */ ({ device: 'wasm', dtype: 'q8' });
-          tts = await KokoroTTS.from_pretrained(MODEL_ID, fallback);
-          active = fallback;
+          await loadModel(WASM_FALLBACK);
         } else {
           throw err;
         }
@@ -140,7 +179,7 @@ export async function createKokoroRuntime() {
       const splitter = new TextSplitterStream();
       const stream = tts.stream(splitter, { voice, speed });
       const parts = /** @type {Float32Array[]} */ ([]);
-      let sampleRate = 24000;
+      let sampleRate = KOKORO_RATE;
       let index = 0;
 
       const reader = (async () => {
@@ -148,13 +187,13 @@ export async function createKokoroRuntime() {
           if (signal?.aborted) {
             throw new DOMException('Aborted', 'AbortError');
           }
-          const audio = toFloat32(item.audio);
-          sampleRate = item.audio?.sampling_rate || item.sampling_rate || sampleRate;
-          parts.push(audio);
+          const { pcm, rate } = unpackAudio(item.audio);
+          sampleRate = rate || sampleRate;
+          parts.push(pcm);
           onChunk?.({
             text: item.text || '',
             index,
-            audio,
+            audio: pcm,
             sampleRate,
           });
           index += 1;
@@ -188,9 +227,12 @@ export async function createKokoroRuntime() {
  * @returns {Promise<BackendConfig>}
  */
 async function pickBackend() {
+  if (webgpuAudioBad) {
+    return WASM_FALLBACK;
+  }
   try {
     if (!navigator.gpu) {
-      return { device: 'wasm', dtype: 'q8' };
+      return WASM_FALLBACK;
     }
     const adapter = await navigator.gpu.requestAdapter();
     if (adapter) {
@@ -199,7 +241,7 @@ async function pickBackend() {
   } catch {
     /* fall through to wasm */
   }
-  return { device: 'wasm', dtype: 'q8' };
+  return WASM_FALLBACK;
 }
 
 /**
@@ -230,26 +272,110 @@ export function splitForSpeech(text) {
 }
 
 /**
+ * Copy PCM out of Kokoro/ORT buffers immediately (WebGPU may reuse tensors).
  * @param {any} audio
- * @returns {Float32Array}
+ * @returns {{ pcm: Float32Array, rate: number }}
  */
-function toFloat32(audio) {
+function unpackAudio(audio) {
+  let pcm = new Float32Array(0);
+  let rate = KOKORO_RATE;
+
   if (!audio) {
-    return new Float32Array(0);
+    return { pcm, rate };
   }
+
+  if (typeof audio.sampling_rate === 'number' && audio.sampling_rate > 0) {
+    rate = audio.sampling_rate;
+  }
+
   if (audio instanceof Float32Array) {
-    return audio;
+    pcm = audio.slice();
+  } else if (audio.audio instanceof Float32Array) {
+    pcm = audio.audio.slice();
+  } else if (ArrayBuffer.isView(audio.audio)) {
+    pcm = Float32Array.from(audio.audio);
+  } else if (ArrayBuffer.isView(audio)) {
+    pcm = Float32Array.from(/** @type {ArrayLike<number>} */ (audio));
+  } else if (audio.audio && typeof audio.audio === 'object' && ArrayBuffer.isView(audio.audio.data)) {
+    pcm = Float32Array.from(audio.audio.data);
   }
-  if (audio.audio instanceof Float32Array) {
-    return audio.audio;
+
+  let peak = 0;
+  for (let i = 0; i < pcm.length; i++) {
+    const v = pcm[i];
+    if (!Number.isFinite(v)) {
+      pcm[i] = 0;
+      continue;
+    }
+    const a = Math.abs(v);
+    if (a > peak) {
+      peak = a;
+    }
   }
-  if (ArrayBuffer.isView(audio.audio)) {
-    return Float32Array.from(audio.audio);
+  // Some EP paths return int-ish magnitudes; normalize into Web Audio range.
+  if (peak > 1.5) {
+    const scale = 0.99 / peak;
+    for (let i = 0; i < pcm.length; i++) {
+      pcm[i] *= scale;
+    }
   }
-  if (ArrayBuffer.isView(audio)) {
-    return Float32Array.from(/** @type {ArrayLike<number>} */ (audio));
+
+  return { pcm, rate };
+}
+
+/**
+ * Reject unintelligible HF / empty / non-finite WebGPU renders.
+ * @param {Float32Array} pcm
+ * @returns {boolean}
+ */
+function isSpeechLikePcm(pcm) {
+  if (!pcm || pcm.length < 800) {
+    return false;
   }
-  return new Float32Array(0);
+  const stride = Math.max(1, (pcm.length / 4000) | 0);
+  let peak = 0;
+  let sumSq = 0;
+  let diffSq = 0;
+  let zc = 0;
+  let prev = 0;
+  let n = 0;
+  for (let i = 0; i < pcm.length; i += stride) {
+    const v = pcm[i];
+    if (!Number.isFinite(v)) {
+      return false;
+    }
+    const a = Math.abs(v);
+    if (a > peak) {
+      peak = a;
+    }
+    sumSq += v * v;
+    if (n > 0) {
+      const d = v - prev;
+      diffSq += d * d;
+      if ((prev >= 0 && v < 0) || (prev < 0 && v >= 0)) {
+        zc += 1;
+      }
+    }
+    prev = v;
+    n += 1;
+  }
+  if (peak < 0.02 || peak > 4) {
+    return false;
+  }
+  const rms = Math.sqrt(sumSq / Math.max(1, n));
+  if (rms < 0.005) {
+    return false;
+  }
+  const hf = Math.sqrt(diffSq / Math.max(1, n));
+  const zcRate = zc / Math.max(1, n);
+  // Alien/HF garbage: derivative energy and zero-crossings far above speech.
+  if (hf > rms * 4.5 && zcRate > 0.35) {
+    return false;
+  }
+  if (zcRate > 0.48) {
+    return false;
+  }
+  return true;
 }
 
 /**

@@ -486,8 +486,9 @@ export async function bootApp() {
     if (playCtx.state === 'suspended') {
       await playCtx.resume();
     }
-    const buffer = playCtx.createBuffer(1, pcm.length, rate);
-    buffer.copyToChannel(pcm, 0);
+    const sr = rate > 0 ? rate : 24000;
+    const buffer = playCtx.createBuffer(1, pcm.length, sr);
+    buffer.copyToChannel(pcm.length ? pcm : new Float32Array(1), 0);
     const source = playCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(analyser);
@@ -515,7 +516,13 @@ export async function bootApp() {
     if (playCtx) {
       return;
     }
-    playCtx = new AudioContext();
+    // Kokoro is 24 kHz; request that rate so playback is not pitch-shifted
+    // when the device default is 48 kHz and resampling misbehaves.
+    try {
+      playCtx = new AudioContext({ sampleRate: 24000 });
+    } catch {
+      playCtx = new AudioContext();
+    }
     analyser = playCtx.createAnalyser();
     analyser.fftSize = 256;
     analyser.connect(playCtx.destination);
