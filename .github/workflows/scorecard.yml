@@ -2,7 +2,7 @@
 #   actions/checkout@v7.0.1                 3d3c42e5aac5ba805825da76410c181273ba90b1
 #   actions/upload-artifact@v7.0.1           043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
 #   ossf/scorecard-action@v2.4.4            2d1146689b8cda280b9bc96326124645441f03bc
-#   github/codeql-action/upload-sarif@v4.37.4 f205ea1c3313d32999d8d6a48b4f6530d4437b38
+#   github/codeql-action/upload-sarif@v4.37.9 cdf488f595d80d6e07e03d4674febd5ab45fa938
 #
 # Hardens supply-chain checks against pwn-request / tag-move / secret-dump
 # patterns (tj-actions, prt-scan). No pull_request_target. SHA-pinned only.
