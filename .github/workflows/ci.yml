@@ -31,9 +31,13 @@ permissions:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,13 +56,63 @@ jobs:
           node-version: "22"
 
       - name: Go test
+        shell: bash
         run: go test ./...
 
       - name: JS test
+        shell: bash
         run: node --test web/js/text/clean.test.mjs
 
-      - name: Build
-        run: make build
+      - name: Build server
+        shell: bash
+        env:
+          APP: speakasm
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          EXT=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXT=".exe"
+          fi
+          go build -trimpath -ldflags "-s -w" -o "bin/${APP}${EXT}" "./cmd/${APP}"
+
+      - name: Smoke server
+        shell: bash
+        env:
+          APP: speakasm
+        run: |
+          set -euo pipefail
+          EXT=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            EXT=".exe"
+          fi
+          BIN="./bin/${APP}${EXT}"
+          ADDR="127.0.0.1:18080"
+          "$BIN" -web web -addr "$ADDR" &
+          PID=$!
+          cleanup() {
+            kill "$PID" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          ok=0
+          for _ in $(seq 1 40); do
+            if curl -fsS "http://${ADDR}/api/health" >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 0.5
+          done
+          if [[ "$ok" != "1" ]]; then
+            echo "server failed to become ready on ${ADDR}" >&2
+            exit 1
+          fi
+          curl -fsS "http://${ADDR}/api/health"
+          echo
+          curl -fsS "http://${ADDR}/api/version"
+          echo
+          code=$(curl -fsS -o /dev/null -w "%{http_code}" "http://${ADDR}/")
+          test "$code" = "200"
 
   lint:
     name: Lint
