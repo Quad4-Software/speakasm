@@ -45,7 +45,7 @@ Binary: `bin/speakasm` (default listen `:8080`, web root `web`).
 - Automatic cleanup of markup, nav junk, and ebook boilerplate
 - Multiple Kokoro voices (US/UK)
 - Speed control, streaming playback, WAV download
-- Fully local after `make assets` / first offline save
+- Fully local after first load (models auto-cache for offline)
 - PWA install + service worker caching
 
 ## License

@@ -10,7 +10,9 @@ import { cacheModelUrls, setupInstallAffordance } from '../pwa.js';
  */
 export async function bootApp() {
   const els = {
-    voice: /** @type {HTMLSelectElement} */ (document.getElementById('voice')),
+    voice: /** @type {HTMLInputElement} */ (document.getElementById('voice')),
+    voicePicker: /** @type {HTMLElement} */ (document.getElementById('voice-picker')),
+    voiceLabel: /** @type {HTMLElement} */ (document.getElementById('voice-label')),
     speed: /** @type {HTMLInputElement} */ (document.getElementById('speed')),
     speedVal: /** @type {HTMLElement} */ (document.getElementById('speed-val')),
     input: /** @type {HTMLTextAreaElement} */ (document.getElementById('input')),
@@ -19,14 +21,12 @@ export async function bootApp() {
     btnPlay: /** @type {HTMLButtonElement} */ (document.getElementById('btn-play')),
     btnDownload: /** @type {HTMLButtonElement} */ (document.getElementById('btn-download')),
     btnClear: /** @type {HTMLButtonElement} */ (document.getElementById('btn-clear')),
-    btnOffline: /** @type {HTMLButtonElement} */ (document.getElementById('btn-offline')),
     btnInstall: /** @type {HTMLButtonElement} */ (document.getElementById('btn-install')),
     btnIosTip: /** @type {HTMLButtonElement} */ (document.getElementById('btn-ios-tip')),
     iosTipPanel: /** @type {HTMLElement} */ (document.getElementById('ios-tip-panel')),
     file: /** @type {HTMLInputElement} */ (document.getElementById('file')),
     status: /** @type {HTMLElement} */ (document.getElementById('status')),
     spinner: /** @type {HTMLElement} */ (document.getElementById('spinner')),
-    livePill: /** @type {HTMLElement} */ (document.getElementById('live-pill')),
     progress: /** @type {HTMLElement} */ (document.getElementById('progress')),
     progressTrack: /** @type {HTMLElement} */ (document.querySelector('.progress-track')),
     error: /** @type {HTMLElement} */ (document.getElementById('error')),
@@ -79,7 +79,7 @@ export async function bootApp() {
   setBusy(true, 'Getting ready...');
   try {
     voices = await loadVoices();
-    fillVoices(els.voice, voices);
+    fillVoices(els.voicePicker, voices);
     clearError();
     setStatus('Warming up Kokoro...');
     wave.setMode('loading');
@@ -88,6 +88,7 @@ export async function bootApp() {
     els.status.classList.add('is-ok');
     wave.setMode('idle');
     syncActions();
+    void cacheOfflineQuietly();
   } catch (err) {
     setBusy(false, 'Could not finish setup.');
     showError(friendlyError(err));
@@ -100,14 +101,15 @@ export async function bootApp() {
   });
   els.speed.addEventListener('input', () => {
     els.speedVal.textContent = `${Number(els.speed.value).toFixed(2)}x`;
+    syncSliderFill(els.speed);
   });
+  syncSliderFill(els.speed);
   els.btnSpeak.addEventListener('click', () => void speak());
   els.btnStop.addEventListener('click', () => stopAll());
   els.btnPlay.addEventListener('click', () => void toggleReplay());
   els.btnDownload.addEventListener('click', () => downloadWav());
   els.btnClear.addEventListener('click', () => clearAll());
   els.file.addEventListener('change', () => void onFile());
-  els.btnOffline.addEventListener('click', () => void saveOffline());
 
   els.scrub.addEventListener('pointerdown', () => {
     scrubbing = true;
@@ -121,6 +123,7 @@ export async function bootApp() {
     seekReplay(Number(els.scrub.value) / 1000);
   });
   els.scrub.addEventListener('input', () => {
+    syncSliderFill(els.scrub);
     if (!lastAudio) {
       return;
     }
@@ -156,21 +159,78 @@ export async function bootApp() {
   }
 
   /**
-   * @param {HTMLSelectElement} select
+   * @param {HTMLElement} picker
    * @param {typeof voices} list
    */
-  function fillVoices(select, list) {
-    select.replaceChildren();
-    for (const v of list) {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      const locale = v.locale === 'en-gb' ? 'UK' : 'US';
-      opt.textContent = `${v.label} (${locale}, ${v.gender})`;
-      if (v.default) {
-        opt.selected = true;
-      }
-      select.appendChild(opt);
+  function fillVoices(picker, list) {
+    picker.replaceChildren();
+    const initial = list.find((v) => v.default) || list[0];
+    if (initial) {
+      selectVoice(initial.id, false);
     }
+    for (const v of list) {
+      const locale = v.locale === 'en-gb' ? 'UK' : 'US';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'voice-chip';
+      btn.dataset.voice = v.id;
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('aria-selected', v.id === els.voice.value ? 'true' : 'false');
+      btn.title = `${v.label} (${locale}, ${v.gender})`;
+      btn.setAttribute('aria-label', `${v.label}, ${locale}, ${v.gender}`);
+
+      const img = document.createElement('img');
+      img.src = `/icons/voices/${v.id}.png`;
+      img.alt = '';
+      img.width = 36;
+      img.height = 36;
+      img.decoding = 'async';
+      img.draggable = false;
+
+      const name = document.createElement('span');
+      name.className = 'voice-chip-name';
+      name.textContent = v.label;
+
+      btn.append(img, name);
+      btn.addEventListener('click', () => selectVoice(v.id, true));
+      if (v.id === els.voice.value) {
+        btn.classList.add('is-selected');
+      }
+      picker.appendChild(btn);
+    }
+  }
+
+  /**
+   * @param {string} id
+   * @param {boolean} [announce]
+   */
+  function selectVoice(id, announce = true) {
+    const voice = voices.find((v) => v.id === id);
+    if (!voice) {
+      return;
+    }
+    els.voice.value = voice.id;
+    els.voiceLabel.textContent = voice.label;
+    for (const btn of els.voicePicker.querySelectorAll('.voice-chip')) {
+      const on = btn instanceof HTMLElement && btn.dataset.voice === voice.id;
+      btn.classList.toggle('is-selected', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    if (announce) {
+      setStatus(`Voice: ${voice.label}`);
+      els.status.classList.add('is-ok');
+    }
+  }
+
+  /**
+   * @param {HTMLInputElement} el
+   */
+  function syncSliderFill(el) {
+    const min = Number(el.min) || 0;
+    const max = Number(el.max) || 100;
+    const val = Number(el.value);
+    const pct = max === min ? 0 : ((val - min) / (max - min)) * 100;
+    el.style.setProperty('--fill', `${pct}%`);
   }
 
   async function speak() {
@@ -189,7 +249,6 @@ export async function bootApp() {
     streaming = true;
     setBusy(true, 'Speaking...');
     wave.setMode('speaking');
-    els.livePill.classList.add('is-on');
     els.playback.classList.add('is-active');
     clearError();
     lastAudio = null;
@@ -234,7 +293,6 @@ export async function bootApp() {
       }
     } finally {
       streaming = false;
-      els.livePill.classList.remove('is-on');
       wave.setMode('idle');
       wave.setLive(null);
       abort = null;
@@ -247,7 +305,6 @@ export async function bootApp() {
   function stopAll() {
     abort?.abort();
     stopPlayback(true);
-    els.livePill.classList.remove('is-on');
     wave.setMode('idle');
     wave.setLive(null);
     if (busy) {
@@ -564,22 +621,21 @@ export async function bootApp() {
     }
   }
 
-  async function saveOffline() {
-    setBusy(true, 'Saving offline assets...');
+  async function cacheOfflineQuietly() {
     try {
       const urls = await collectOfflineUrls();
       await cacheModelUrls(urls, (done, total) => {
-        setProgress(done / Math.max(1, total));
-        setStatus(`Saving offline… ${done}/${total}`);
+        if (busy) {
+          return;
+        }
+        setStatus(`Caching offline… ${done}/${total}`);
       });
-      setBusy(false, 'Saved for offline use.');
-      els.status.classList.add('is-ok');
-      setProgress(1);
-      hideProgressSoon();
+      if (!busy) {
+        setStatus('Ready when you are.');
+        els.status.classList.add('is-ok');
+      }
     } catch (err) {
-      setBusy(false, 'Offline save failed.');
-      showError(friendlyError(err));
-      hideProgressSoon();
+      console.warn('Offline cache failed', err);
     }
   }
 
@@ -597,6 +653,7 @@ export async function bootApp() {
     ];
     for (const v of voices) {
       urls.push(`/models/Kokoro-82M-v1.0-ONNX/voices/${v.id}.bin`);
+      urls.push(`/icons/voices/${v.id}.png`);
     }
     try {
       const res = await fetch('/vendor/kokoro/manifest.json', { credentials: 'same-origin' });
@@ -679,6 +736,7 @@ export async function bootApp() {
     if (!scrubbing) {
       els.scrub.value = String(Math.round((dur > 0 ? cur / dur : 0) * 1000));
     }
+    syncSliderFill(els.scrub);
 
     if (replayPlaying && !replayPaused) {
       els.btnPlay.textContent = 'Pause';
