@@ -41,7 +41,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="/css/app.css?v=0.1.8">
+  <link rel="stylesheet" href="/css/app.css?v=0.2.4">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -105,13 +105,16 @@
             </div>
           </div>
 
-          <label class="field field-text">
-            <span class="field-head">
+          <div class="field field-text">
+            <div class="field-head">
               <span>Text</span>
-              <span id="char-count" class="char-count">0 chars</span>
-            </span>
-            <textarea id="input" rows="3" placeholder="Paste text, or open a TXT / Markdown / HTML / EPUB / DOCX file." spellcheck="true" enterkeyhint="done"></textarea>
-          </label>
+              <span class="field-head-tools">
+                <span id="char-count" class="char-count">0 chars</span>
+                <button type="button" id="btn-clear" class="linkish clear-inline" disabled>Clear</button>
+              </span>
+            </div>
+            <textarea id="input" rows="3" placeholder="Paste text, or open a file." spellcheck="true" enterkeyhint="done" aria-label="Text"></textarea>
+          </div>
 
           <div class="action-stack">
             <div class="cta-row">
@@ -122,18 +125,17 @@
                 <span class="file-cta-label-full" aria-hidden="true">Open a file</span>
                 <input type="file" id="file" accept=".txt,.md,.markdown,.html,.htm,.epub,.docx,.rtf,.csv,.log,text/plain,text/markdown,text/html,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
               </label>
-              <button type="button" id="btn-clear" class="linkish" disabled>Clear</button>
             </div>
-
-            <div class="status-row">
-              <span id="spinner" class="spinner" hidden aria-hidden="true"></span>
-              <p id="status" class="status" role="status">Getting ready...</p>
-            </div>
-            <div class="progress-track" hidden>
-              <div id="progress" class="progress-bar"></div>
-            </div>
-            <p id="error" class="error" role="alert" hidden></p>
           </div>
+
+          <div class="status-row">
+            <span id="spinner" class="spinner" hidden aria-hidden="true"></span>
+            <p id="status" class="status" role="status">Getting ready...</p>
+          </div>
+          <div class="progress-track" hidden>
+            <div id="progress" class="progress-bar"></div>
+          </div>
+          <p id="error" class="error" role="alert" hidden></p>
         </div>
       </section>
 
@@ -142,7 +144,10 @@
           <canvas id="wave" width="1200" height="160"></canvas>
         </div>
         <div class="playback-bar">
-          <button type="button" id="btn-play" class="cta play" disabled aria-label="Play">Play</button>
+          <button type="button" id="btn-play" class="cta play" disabled aria-label="Play">
+            <span class="play-glyph" aria-hidden="true"></span>
+            <span class="play-label">Play</span>
+          </button>
           <div class="scrub-wrap">
             <input type="range" id="scrub" class="slider" min="0" max="1000" value="0" step="1" disabled aria-label="Seek">
             <div class="time-row">

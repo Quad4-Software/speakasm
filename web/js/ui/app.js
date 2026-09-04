@@ -874,18 +874,30 @@ export async function bootApp() {
     syncSliderFill(els.scrub);
 
     if (replayPlaying && !replayPaused) {
-      els.btnPlay.textContent = 'Pause';
-      els.btnPlay.setAttribute('aria-label', 'Pause');
+      setPlayLabel('Pause');
       els.playback.classList.add('is-playing');
     } else {
-      els.btnPlay.textContent = 'Play';
-      els.btnPlay.setAttribute('aria-label', 'Play');
+      setPlayLabel('Play');
       els.playback.classList.remove('is-playing');
     }
 
-    if (lastAudio || streaming || busy) {
-      els.playback.classList.add('is-active');
+    const showPlayer = Boolean(lastAudio || streaming || replayPlaying || replayPaused);
+    els.playback.classList.toggle('is-active', showPlayer);
+    document.body.classList.toggle('has-player', showPlayer);
+  }
+
+  /**
+   * @param {'Play' | 'Pause'} label
+   */
+  function setPlayLabel(label) {
+    els.btnPlay.setAttribute('aria-label', label);
+    const text = els.btnPlay.querySelector('.play-label');
+    if (text) {
+      text.textContent = label;
+    } else {
+      els.btnPlay.textContent = label;
     }
+    els.btnPlay.classList.toggle('is-pause', label === 'Pause');
   }
 
   /**
