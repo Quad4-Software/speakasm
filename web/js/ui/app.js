@@ -1,7 +1,7 @@
 import { createKokoroEngine, splitForSpeech } from '../engine/kokoro.js';
 import { extractFromFile } from '../docs/extract.js';
 import { cleanText } from '../text/clean.js';
-import { concatAudio, encodeWav } from '../audio/wav.js';
+import { encodeWav } from '../audio/wav.js';
 import { createWaveController } from './wave.js';
 import { cacheModelUrls, setupInstallAffordance } from '../pwa.js';
 
@@ -63,6 +63,12 @@ export async function bootApp() {
   let playSource = null;
   /** @type {AnalyserNode | null} */
   let analyser = null;
+  /** @type {Uint8Array | null} */
+  let analyseBins = null;
+  /** @type {AudioBuffer | null} */
+  let replayBuffer = null;
+  /** @type {Float32Array | null} */
+  let replayBufferSrc = null;
   let analyseWatch = 0;
   let dragDepth = 0;
   /** @type {Array<{ pcm: Float32Array, rate: number }>} */
@@ -251,7 +257,7 @@ export async function bootApp() {
     wave.setMode('speaking');
     els.playback.classList.add('is-active');
     clearError();
-    lastAudio = null;
+    setReplayAudio(null, lastRate);
     syncActions();
     syncPlaybackUi();
 
@@ -260,28 +266,28 @@ export async function bootApp() {
     setProgress(0.02);
 
     try {
-      const parts = /** @type {Float32Array[]} */ ([]);
+      let doneChunks = 0;
       const result = await engine.generate(text, {
         voice: els.voice.value,
         speed: Number(els.speed.value) || 1,
         signal: abort.signal,
         onChunk: ({ audio, sampleRate, index }) => {
-          parts.push(audio);
+          doneChunks = index + 1;
           lastRate = sampleRate;
-          setProgress((index + 1) / total);
-          setStatus(`Speaking… ${index + 1}/${total}`);
+          setProgress(doneChunks / total);
+          setStatus(`Speaking… ${doneChunks}/${total}`);
           enqueuePlay(audio, sampleRate);
         },
       });
 
-      lastAudio = result.audio.length ? result.audio : concatAudio(parts);
-      lastRate = result.sampleRate || lastRate;
+      setReplayAudio(result.audio, result.sampleRate || lastRate);
       replayOffset = 0;
       setProgress(1);
       setBusy(false, 'Done.');
       els.status.classList.add('is-ok');
       els.meta.hidden = false;
-      els.meta.textContent = `${formatDuration(lastAudio.length / lastRate)} · ${result.chunks} chunk${result.chunks === 1 ? '' : 's'} · ${els.voice.value}`;
+      const seconds = lastAudio ? lastAudio.length / lastRate : 0;
+      els.meta.textContent = `${formatDuration(seconds)} · ${result.chunks} chunk${result.chunks === 1 ? '' : 's'} · ${els.voice.value}`;
       syncActions();
       syncPlaybackUi();
     } catch (err) {
@@ -347,26 +353,27 @@ export async function bootApp() {
 
     const dur = lastAudio.length / lastRate;
     const startSec = Math.min(Math.max(0, fromRatio), 0.999) * dur;
-    const startSample = Math.floor(startSec * lastRate);
-    const pcm = lastAudio.subarray(startSample);
-    if (!pcm.length) {
+    if (startSec >= dur) {
       replayOffset = 0;
       syncPlaybackUi();
       return;
     }
 
-    const buffer = playCtx.createBuffer(1, pcm.length, lastRate);
-    buffer.copyToChannel(pcm, 0);
+    const buffer = ensureReplayBuffer();
+    if (!buffer) {
+      return;
+    }
+
+    releasePlaySource();
     const source = playCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(analyser);
-    analyser.connect(playCtx.destination);
     playSource = source;
     replayPlaying = true;
     replayPaused = false;
     replayOffset = startSec / dur;
     replayStartedAt = playCtx.currentTime - startSec;
-    source.start();
+    source.start(0, startSec);
     startAnalyse();
     startClock();
     syncActions();
@@ -376,7 +383,7 @@ export async function bootApp() {
       if (playSource !== source) {
         return;
       }
-      playSource = null;
+      releasePlaySource();
       replayPlaying = false;
       replayPaused = false;
       replayOffset = 0;
@@ -402,7 +409,7 @@ export async function bootApp() {
     } catch {
       /* ignore */
     }
-    playSource = null;
+    releasePlaySource();
     replayPaused = true;
     replayPlaying = false;
     stopAnalyse();
@@ -473,12 +480,23 @@ export async function bootApp() {
     const source = playCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(analyser);
-    analyser.connect(playCtx.destination);
     playSource = source;
     source.start();
     startAnalyse();
     await new Promise((resolve) => {
-      source.onended = () => resolve(undefined);
+      source.onended = () => {
+        if (playSource === source) {
+          releasePlaySource();
+        } else {
+          try {
+            source.disconnect();
+          } catch {
+            /* ignore */
+          }
+          source.buffer = null;
+        }
+        resolve(undefined);
+      };
     });
   }
 
@@ -489,16 +507,63 @@ export async function bootApp() {
     playCtx = new AudioContext();
     analyser = playCtx.createAnalyser();
     analyser.fftSize = 256;
+    analyser.connect(playCtx.destination);
+    analyseBins = new Uint8Array(analyser.frequencyBinCount);
+  }
+
+  /**
+   * @returns {AudioBuffer | null}
+   */
+  function ensureReplayBuffer() {
+    if (!playCtx || !lastAudio || !lastAudio.length) {
+      return null;
+    }
+    if (replayBuffer && replayBufferSrc === lastAudio && replayBuffer.sampleRate === lastRate) {
+      return replayBuffer;
+    }
+    const buffer = playCtx.createBuffer(1, lastAudio.length, lastRate);
+    buffer.copyToChannel(lastAudio, 0);
+    replayBuffer = buffer;
+    replayBufferSrc = lastAudio;
+    return buffer;
+  }
+
+  /**
+   * @param {Float32Array | null} pcm
+   * @param {number} rate
+   */
+  function setReplayAudio(pcm, rate) {
+    lastAudio = pcm && pcm.length ? pcm : null;
+    lastRate = rate || lastRate;
+    replayBuffer = null;
+    replayBufferSrc = null;
+  }
+
+  function releasePlaySource() {
+    if (!playSource) {
+      return;
+    }
+    const source = playSource;
+    playSource = null;
+    try {
+      source.disconnect();
+    } catch {
+      /* ignore */
+    }
+    source.buffer = null;
   }
 
   function startAnalyse() {
     if (!analyser) {
       return;
     }
+    if (!analyseBins || analyseBins.length !== analyser.frequencyBinCount) {
+      analyseBins = new Uint8Array(analyser.frequencyBinCount);
+    }
+    const data = analyseBins;
     wave.setMode('speaking');
-    const data = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
-      if (!analyser) {
+      if (!analyser || !data) {
         return;
       }
       analyser.getByteFrequencyData(data);
@@ -529,13 +594,13 @@ export async function bootApp() {
   }
 
   function stopStreamQueue() {
-    playQueue = [];
+    playQueue.length = 0;
     try {
       playSource?.stop();
     } catch {
       /* ignore */
     }
-    playSource = null;
+    releasePlaySource();
   }
 
   /**
@@ -572,7 +637,7 @@ export async function bootApp() {
   function clearAll() {
     stopAll();
     els.input.value = '';
-    lastAudio = null;
+    setReplayAudio(null, lastRate);
     replayOffset = 0;
     els.meta.hidden = true;
     els.meta.textContent = '';
