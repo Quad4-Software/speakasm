@@ -113,7 +113,7 @@ write("openssf.json", {
 
 # Markdown snippet for README (shields endpoint + CI)
 owner_repo = repo
-raw = f"https://raw.githubusercontent.com/{owner_repo}/master/badges"
+raw = f"https://raw.githubusercontent.com/{owner_repo}/badges"
 enc = __import__("urllib.parse").parse.quote
 
 def endpoint(file: str) -> str:

@@ -66,7 +66,9 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: bash scripts/gen-badges.sh
 
-      - name: Commit if changed
+      - name: Publish badge endpoints
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if git diff --quiet -- badges; then
             echo "badges unchanged"
@@ -74,6 +76,14 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add badges
-          git commit -m "chore: refresh dynamic shields badges"
-          git push
+          WORK="$(pwd)"
+          PUB="$(mktemp -d)"
+          cp -a badges/. "$PUB/"
+          cd "$PUB"
+          git init -q
+          git checkout -q -b badges
+          git add .
+          git commit -qm "chore: refresh dynamic shields badges"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:badges"
+          cd "$WORK"
+          rm -rf "$PUB"

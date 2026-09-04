@@ -5,6 +5,7 @@
 
 ARG ALPINE_DIGEST=sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 ARG GOLANG_DIGEST=sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628
+ARG NODE_DIGEST=sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
 ARG VERSION=0.1.0
 ARG REVISION=unknown
 ARG CREATED=unknown
@@ -32,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 		-o /out/speakasm \
 		./cmd/speakasm
 
-FROM node:22-alpine AS vendor
+FROM node:22-alpine@${NODE_DIGEST} AS vendor
 
 WORKDIR /src
 COPY scripts/vendor/package.json ./scripts/vendor/
