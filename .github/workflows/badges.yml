@@ -74,14 +74,14 @@ jobs:
             echo "badges unchanged"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           WORK="$(pwd)"
           PUB="$(mktemp -d)"
           cp -a badges/. "$PUB/"
           cd "$PUB"
           git init -q
           git checkout -q -b badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -qm "chore: refresh dynamic shields badges"
           git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:badges"

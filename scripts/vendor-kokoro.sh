@@ -12,7 +12,7 @@ mkdir -p "$OUT_DIR" "$JSZIP_DIR"
 cd "$VENDOR_DIR"
 if [[ ! -d node_modules/kokoro-js ]]; then
   echo "installing kokoro-js"
-  npm install --no-fund --no-audit
+  npm ci --no-fund --no-audit
 fi
 
 WEB_BUNDLE="$VENDOR_DIR/node_modules/kokoro-js/dist/kokoro.web.js"
