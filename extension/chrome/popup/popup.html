@@ -30,10 +30,11 @@
       <button id="btn-sel" type="button" class="secondary">Speak selection</button>
       <button id="btn-page" type="button" class="secondary">Speak page</button>
     </div>
-    <label>Bridge origin
-      <input id="bridge" type="text" spellcheck="false" placeholder="https://speakasm.quad4.io">
-    </label>
-    <button id="btn-bridge" type="button" class="ghost">Connect bridge tab</button>
+    <div class="row">
+      <button id="btn-bridge" type="button" class="ghost">Connect bridge</button>
+      <button id="btn-settings" type="button" class="ghost">Settings</button>
+    </div>
+    <p class="hint">Site and update source are in Settings (forks welcome).</p>
     <p id="status" class="status" role="status"></p>
   </main>
   <script src="popup.js" type="module"></script>

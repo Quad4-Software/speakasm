@@ -4,7 +4,9 @@ function setStatus(msg) { status.textContent = msg || ""; }
 async function send(msg) { return chrome.runtime.sendMessage(msg); }
 
 const settings = await send({ type: "get-settings" });
-if (settings?.bridgeOrigin) $("bridge").value = settings.bridgeOrigin;
+if (settings?.updateAvailable && settings?.remoteVersion) {
+  setStatus(`Update ${settings.remoteVersion} available in Settings`);
+}
 if (settings?.speed) {
   $("speed").value = settings.speed;
   $("speed-val").textContent = Number(settings.speed).toFixed(2);
@@ -15,7 +17,6 @@ $("speed").addEventListener("input", () => {
 });
 $("speed").addEventListener("change", persist);
 $("voice").addEventListener("change", persist);
-$("bridge").addEventListener("change", persist);
 
 async function persist() {
   await send({
@@ -23,7 +24,6 @@ async function persist() {
     settings: {
       voice: $("voice").value,
       speed: Number($("speed").value),
-      bridgeOrigin: $("bridge").value.trim() || undefined,
     },
   });
 }
@@ -86,4 +86,9 @@ $("btn-page").addEventListener("click", async () => {
   setStatus("Speaking page…");
   const res = await send({ type: "speak-page" });
   setStatus(res?.ok ? "Done" : (res?.error || "Error"));
+});
+
+
+$("btn-settings").addEventListener("click", async () => {
+  await send({ type: "open-options" });
 });

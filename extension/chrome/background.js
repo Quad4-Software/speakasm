@@ -4,6 +4,7 @@
  */
 
 const APP_ORIGIN = "https://speakasm.quad4.io";
+const APP_NAME = "speakasm";
 const BRIDGE_PATH = "/extension-bridge.html";
 const BRIDGE_NAME = "speakasm-bridge";
 
@@ -11,14 +12,20 @@ const pending = new Map();
 let reqSeq = 0;
 
 async function getConfiguredOrigin() {
-  const { bridgeOrigin = APP_ORIGIN } = await chrome.storage.sync.get("bridgeOrigin");
-  return String(bridgeOrigin || APP_ORIGIN).replace(/\/$/, "");
+  const settings = await getSettings();
+  return String(settings.bridgeOrigin || settings.siteOrigin || APP_ORIGIN).replace(/\/$/, "");
 }
 
-function isAllowedBridgeUrl(url, origin) {
+async function getSiteOrigin() {
+  const settings = await getSettings();
+  return String(settings.siteOrigin || APP_ORIGIN).replace(/\/$/, "");
+}
+
+function isAllowedBridgeUrl(url, origin, siteOrigin) {
   return (
     url.startsWith(APP_ORIGIN) ||
     url.startsWith(origin) ||
+    (siteOrigin && url.startsWith(siteOrigin)) ||
     url.startsWith("http://127.0.0.1") ||
     url.startsWith("http://localhost")
   );
@@ -77,8 +84,8 @@ chrome.runtime.onConnectExternal.addListener((port) => {
     return;
   }
   const url = port.sender?.url || "";
-  getConfiguredOrigin().then((origin) => {
-    if (!isAllowedBridgeUrl(url, origin)) {
+  Promise.all([getConfiguredOrigin(), getSiteOrigin()]).then(([origin, siteOrigin]) => {
+    if (!isAllowedBridgeUrl(url, origin, siteOrigin)) {
       port.disconnect();
       return;
     }
@@ -101,15 +108,123 @@ chrome.runtime.onConnectExternal.addListener((port) => {
 
 async function getSettings() {
   const defaults = {
+    siteOrigin: APP_ORIGIN,
     bridgeOrigin: APP_ORIGIN,
+    syncBridge: true,
+    autoUpdateCheck: true,
     voice: "af_heart",
     speed: 1,
+    remoteVersion: "",
+    updateAvailable: false,
   };
   const stored = await chrome.storage.sync.get(defaults);
-  return { ...defaults, ...stored };
+  const merged = { ...defaults, ...stored };
+  if (merged.syncBridge !== false) {
+    merged.bridgeOrigin = merged.siteOrigin || APP_ORIGIN;
+  }
+  return merged;
 }
 
+
+function compareVersions(a, b) {
+  const pa = String(a || "0").split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || "0").split(".").map((x) => parseInt(x, 10) || 0);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d > 0) return 1;
+    if (d < 0) return -1;
+  }
+  return 0;
+}
+
+async function ensureHostAccess(origin) {
+  const o = String(origin || "").replace(/\/$/, "");
+  if (!o || o === APP_ORIGIN) return true;
+  if (o.startsWith("http://127.0.0.1") || o.startsWith("http://localhost")) return true;
+  try {
+    const ok = await chrome.permissions.contains({ origins: [`${o}/*`] });
+    if (ok) return true;
+    return await chrome.permissions.request({ origins: [`${o}/*`] });
+  } catch {
+    return false;
+  }
+}
+
+async function scheduleUpdateAlarm(enabled) {
+  if (!chrome.alarms) return;
+  await chrome.alarms.clear("check-updates");
+  if (enabled) {
+    await chrome.alarms.create("check-updates", { periodInMinutes: 1440 });
+  }
+}
+
+async function checkForUpdates(opts = {}) {
+  const settings = await getSettings();
+  const siteOrigin = String(settings.siteOrigin || APP_ORIGIN).replace(/\/$/, "");
+  const allowed = await ensureHostAccess(siteOrigin);
+  if (!allowed) throw new Error("Host permission required for " + siteOrigin);
+
+  const localVersion = chrome.runtime.getManifest().version;
+  const res = await fetch(`${siteOrigin}/build/manifest.json`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Update manifest HTTP ${res.status}`);
+  const remote = await res.json();
+  const remoteVersion = String(remote?.version || "");
+  const updateAvailable = Boolean(remoteVersion) && compareVersions(remoteVersion, localVersion) > 0;
+
+  await chrome.storage.sync.set({
+    remoteVersion,
+    updateAvailable,
+    lastUpdateCheck: Date.now(),
+  });
+
+  if (updateAvailable && opts.notify !== false) {
+    try {
+      await chrome.action.setBadgeText({ text: "UP" });
+      await chrome.action.setBadgeBackgroundColor({ color: "#8ad0c6" });
+      await chrome.notifications.create("ext-update", {
+        type: "basic",
+        iconUrl: "icons/icon-128.png",
+        title: `${APP_NAME} update available`,
+        message: `Version ${remoteVersion} is ready at ${siteOrigin}/build/`,
+      });
+    } catch {
+      // notifications optional
+    }
+  } else if (!updateAvailable) {
+    try {
+      await chrome.action.setBadgeText({ text: "" });
+    } catch {
+      // ignore
+    }
+  }
+
+  let browserUpdate = null;
+  if (chrome.runtime.requestUpdateCheck) {
+    try {
+      browserUpdate = await chrome.runtime.requestUpdateCheck();
+    } catch {
+      browserUpdate = null;
+    }
+  }
+
+  return {
+    localVersion,
+    remoteVersion,
+    updateAvailable,
+    siteOrigin,
+    browserUpdate,
+    message: updateAvailable
+      ? `Update available: ${remoteVersion}`
+      : "You are up to date.",
+  };
+}
+
+
 chrome.runtime.onInstalled.addListener(async () => {
+  const settings = await getSettings();
+  await scheduleUpdateAlarm(settings.autoUpdateCheck !== false);
+  checkForUpdates({ notify: false }).catch(() => {});
   await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
     id: "speak-selection",
@@ -206,6 +321,29 @@ if (chrome.commands?.onCommand) {
   });
 }
 
+chrome.runtime.onStartup?.addListener?.(async () => {
+  const settings = await getSettings();
+  await scheduleUpdateAlarm(settings.autoUpdateCheck !== false);
+  if (settings.autoUpdateCheck !== false) {
+    checkForUpdates({ notify: true }).catch(() => {});
+  }
+});
+
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== "check-updates") return;
+    checkForUpdates({ notify: true }).catch(() => {});
+  });
+}
+
+if (chrome.notifications?.onClicked) {
+  chrome.notifications.onClicked.addListener(async (id) => {
+    if (id !== "ext-update") return;
+    const siteOrigin = await getSiteOrigin();
+    await chrome.tabs.create({ url: `${siteOrigin}/build/` });
+  });
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (msg?.type === "ensure-bridge") {
@@ -219,7 +357,34 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return;
     }
     if (msg?.type === "save-settings") {
-      await chrome.storage.sync.set(msg.settings || {});
+      const next = { ...(msg.settings || {}) };
+      if (next.siteOrigin) {
+        next.siteOrigin = String(next.siteOrigin).replace(/\/$/, "");
+        const ok = await ensureHostAccess(next.siteOrigin);
+        if (!ok) throw new Error("Permission denied for site origin");
+      }
+      if (next.bridgeOrigin) {
+        next.bridgeOrigin = String(next.bridgeOrigin).replace(/\/$/, "");
+        const ok = await ensureHostAccess(next.bridgeOrigin);
+        if (!ok) throw new Error("Permission denied for bridge origin");
+      }
+      if (next.syncBridge !== false && next.siteOrigin) {
+        next.bridgeOrigin = next.siteOrigin;
+      }
+      await chrome.storage.sync.set(next);
+      const settings = await getSettings();
+      await scheduleUpdateAlarm(settings.autoUpdateCheck !== false);
+      sendResponse({ ok: true });
+      return;
+    }
+    if (msg?.type === "check-updates") {
+      const result = await checkForUpdates({ notify: Boolean(msg.force) });
+      sendResponse({ ok: true, ...result });
+      return;
+    }
+    if (msg?.type === "open-options") {
+      if (chrome.runtime.openOptionsPage) await chrome.runtime.openOptionsPage();
+      else await chrome.tabs.create({ url: chrome.runtime.getURL("options/options.html") });
       sendResponse({ ok: true });
       return;
     }
@@ -258,7 +423,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return;
     }
     if (msg?.type === "open-app") {
-      await chrome.tabs.create({ url: APP_ORIGIN + "/" });
+      const siteOrigin = await getSiteOrigin();
+      await chrome.tabs.create({ url: siteOrigin + "/" });
       sendResponse({ ok: true });
       return;
     }

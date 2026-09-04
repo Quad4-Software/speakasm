@@ -26,7 +26,9 @@
     "activeTab",
     "scripting",
     "contextMenus",
-    "tabs"
+    "tabs",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://speakasm.quad4.io/*",
@@ -54,5 +56,10 @@
       },
       "description": "Speak the selection"
     }
-  }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "update_url": "https://speakasm.quad4.io/build/updates.xml"
 }

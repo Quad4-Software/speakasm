@@ -28,7 +28,9 @@
     "activeTab",
     "scripting",
     "contextMenus",
-    "tabs"
+    "tabs",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://speakasm.quad4.io/*",
@@ -60,7 +62,12 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "speakasm@quad4.io",
-      "strict_min_version": "121.0"
+      "strict_min_version": "121.0",
+      "update_url": "https://speakasm.quad4.io/build/updates.json"
     }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
   }
 }

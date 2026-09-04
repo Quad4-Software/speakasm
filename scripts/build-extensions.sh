@@ -6,6 +6,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 APP="$(basename "$ROOT")"
+DEFAULT_ORIGIN="https://${APP}.quad4.io"
+SITE_ORIGIN="${SITE_ORIGIN:-$DEFAULT_ORIGIN}"
+SITE_ORIGIN="${SITE_ORIGIN%/}"
+
 VERSION="${VERSION:-}"
 if [[ -z "$VERSION" ]]; then
   if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == v* ]]; then
@@ -30,33 +34,74 @@ else
 fi
 CHROME_SRC="$ROOT/extension/chrome"
 FIREFOX_SRC="$ROOT/extension/firefox"
+CHROME_ID_FILE="$ROOT/extension/chrome-id.txt"
 
 mkdir -p "$OUT" "$STAGE"
 rm -rf "$STAGE/chrome" "$STAGE/firefox"
 cp -a "$CHROME_SRC" "$STAGE/chrome"
 cp -a "$FIREFOX_SRC" "$STAGE/firefox"
 
-stamp_manifest() {
-  local file="$1"
-  python3 - "$file" "$VERSION" <<'PY'
+stamp_manifests() {
+  python3 - "$STAGE/chrome/manifest.json" "$STAGE/firefox/manifest.json" "$VERSION" "$SITE_ORIGIN" "$APP" <<'PY'
 import json, sys
-path, version = sys.argv[1], sys.argv[2]
-with open(path, encoding="utf-8") as f:
-    data = json.load(f)
-data["version"] = version
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
+chrome_path, firefox_path, version, site_origin, app = sys.argv[1:6]
+
+def load(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+def dump(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+
+chrome = load(chrome_path)
+firefox = load(firefox_path)
+chrome["version"] = version
+firefox["version"] = version
+chrome["update_url"] = f"{site_origin}/build/updates.xml"
+gecko = firefox.setdefault("browser_specific_settings", {}).setdefault("gecko", {})
+gecko["id"] = f"{app}@quad4.io"
+gecko["update_url"] = f"{site_origin}/build/updates.json"
+
+def rewrite_hosts(manifest):
+    hosts = [
+        f"{site_origin}/*",
+        "http://127.0.0.1/*",
+        "http://localhost/*",
+    ]
+    manifest["host_permissions"] = hosts
+    ext = manifest.setdefault("externally_connectable", {})
+    ext["matches"] = hosts
+
+rewrite_hosts(chrome)
+rewrite_hosts(firefox)
+dump(chrome_path, chrome)
+dump(firefox_path, firefox)
 PY
 }
 
-stamp_manifest "$STAGE/chrome/manifest.json"
-stamp_manifest "$STAGE/firefox/manifest.json"
+stamp_manifests
 
 if [[ ! -f "$KEY" ]]; then
   echo "missing signing key: $KEY" >&2
   echo "generate with: openssl genrsa -out extension/signing.pem 2048" >&2
   exit 1
+fi
+
+CHROME_ID="$(tr -d '[:space:]' < "$CHROME_ID_FILE" 2>/dev/null || true)"
+if [[ -z "$CHROME_ID" ]]; then
+  CHROME_ID="$(python3 - "$KEY" <<'PY'
+import hashlib, subprocess, sys
+der = subprocess.check_output(
+    ["openssl", "rsa", "-in", sys.argv[1], "-pubout", "-outform", "DER"],
+    stderr=subprocess.DEVNULL,
+)
+digest = hashlib.sha256(der).digest()[:16]
+print("".join(chr(ord("a") + (b >> 4)) + chr(ord("a") + (b & 0x0F)) for b in digest))
+PY
+)"
+  printf '%s\n' "$CHROME_ID" > "$CHROME_ID_FILE"
 fi
 
 CHROME_ZIP="$OUT/${APP}-chrome-${VERSION}.zip"
@@ -67,7 +112,8 @@ LATEST_CHROME_CRX="$OUT/${APP}-chrome.crx"
 LATEST_FIREFOX_XPI="$OUT/${APP}-firefox.xpi"
 
 rm -f "$CHROME_ZIP" "$CHROME_CRX" "$FIREFOX_XPI" \
-  "$LATEST_CHROME_ZIP" "$LATEST_CHROME_CRX" "$LATEST_FIREFOX_XPI"
+  "$LATEST_CHROME_ZIP" "$LATEST_CHROME_CRX" "$LATEST_FIREFOX_XPI" \
+  "$OUT/updates.xml" "$OUT/updates.json"
 
 (
   cd "$STAGE/chrome"
@@ -105,6 +151,36 @@ cp -f "$FIREFOX_XPI" "$LATEST_FIREFOX_XPI"
 chmod a+r "$CHROME_ZIP" "$CHROME_CRX" "$FIREFOX_XPI" \
   "$LATEST_CHROME_ZIP" "$LATEST_CHROME_CRX" "$LATEST_FIREFOX_XPI"
 
+# Chrome autoupdate XML + Firefox updates JSON
+cat > "$OUT/updates.xml" <<EOF
+<?xml version='1.0' encoding='UTF-8'?>
+<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
+  <app appid='${CHROME_ID}'>
+    <updatecheck codebase='${SITE_ORIGIN}/build/${APP}-chrome.crx' version='${VERSION}' />
+  </app>
+</gupdate>
+EOF
+
+python3 - "$OUT/updates.json" "$APP" "$VERSION" "$SITE_ORIGIN" <<'PY'
+import json, sys
+path, app, version, site = sys.argv[1:5]
+data = {
+  "addons": {
+    f"{app}@quad4.io": {
+      "updates": [
+        {
+          "version": version,
+          "update_link": f"{site}/build/{app}-firefox.xpi",
+        }
+      ]
+    }
+  }
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+
 (
   cd "$OUT"
   sha256sum \
@@ -114,16 +190,21 @@ chmod a+r "$CHROME_ZIP" "$CHROME_CRX" "$FIREFOX_XPI" \
     "$(basename "$LATEST_CHROME_ZIP")" \
     "$(basename "$LATEST_CHROME_CRX")" \
     "$(basename "$LATEST_FIREFOX_XPI")" \
+    updates.xml \
+    updates.json \
     > SHA256SUMS
 )
 
-python3 - "$OUT" "$APP" "$VERSION" <<'PY'
+python3 - "$OUT" "$APP" "$VERSION" "$SITE_ORIGIN" "$CHROME_ID" <<'PY'
 import json, sys, datetime
 from pathlib import Path
-out, app, version = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+out, app, version, site, chrome_id = Path(sys.argv[1]), *sys.argv[2:]
 meta = {
   "name": app,
   "version": version,
+  "site_origin": site,
+  "chrome_id": chrome_id,
+  "firefox_id": f"{app}@quad4.io",
   "built_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
   "files": {
     "chrome_crx": f"{app}-chrome.crx",
@@ -132,6 +213,8 @@ meta = {
     "chrome_crx_versioned": f"{app}-chrome-{version}.crx",
     "chrome_zip_versioned": f"{app}-chrome-{version}.zip",
     "firefox_xpi_versioned": f"{app}-firefox-{version}.xpi",
+    "updates_chrome": "updates.xml",
+    "updates_firefox": "updates.json",
     "checksums": "SHA256SUMS",
   },
 }
@@ -143,5 +226,7 @@ if [[ -f "$PAGE_TEMPLATE" ]]; then
   sed -e "s/__APP__/${APP}/g" -e "s/__VERSION__/${VERSION}/g" "$PAGE_TEMPLATE" > "$OUT/index.html"
 fi
 
-echo "built extensions into $OUT (version $VERSION)"
+chmod a+r "$OUT/updates.xml" "$OUT/updates.json" "$OUT/manifest.json" "$OUT/SHA256SUMS" "$OUT/index.html"
+
+echo "built extensions into $OUT (version $VERSION, site $SITE_ORIGIN, chrome_id $CHROME_ID)"
 ls -la "$OUT"
