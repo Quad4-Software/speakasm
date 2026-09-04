@@ -1,0 +1,74 @@
+# Pinned actions (bump tag and SHA together when upgrading):
+#   actions/checkout@v7.0.1                   3d3c42e5aac5ba805825da76410c181273ba90b1
+#
+# Secure use: least-privilege GITHUB_TOKEN, pin actions to full commit SHAs,
+# untrusted/event input via env (not inline shell).
+# https://docs.github.com/en/actions/reference/security/secure-use
+
+name: Badges
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "badges/theme.json"
+      - "internal/version/**"
+      - "go.mod"
+      - "scripts/gen-badges.sh"
+      - ".github/workflows/badges.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: badges-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh endpoint badges
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+
+      - name: Resolve version
+        id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$EVENT_NAME" = "release" ]; then
+            RAW="$RELEASE_TAG"
+          else
+            RAW="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          fi
+          if [ -z "$RAW" ]; then
+            RAW="$(sed -n 's/^var Version = \"\(.*\)\"/\1/p' internal/version/version.go | head -1)"
+          fi
+          VER="${RAW#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate badges
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash scripts/gen-badges.sh
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- badges; then
+            echo "badges unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add badges
+          git commit -m "chore: refresh dynamic shields badges"
+          git push
