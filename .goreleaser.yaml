@@ -79,6 +79,31 @@ archives:
 checksum:
   name_template: checksums.txt
 
+
+sboms:
+  - id: project
+    artifacts: any
+    documents:
+      - "{{ .ProjectName }}-{{ .Version }}.cdx.json"
+    cmd: syft
+    args:
+      - "dir:.."
+      - "--source-name={{ .ProjectName }}"
+      - "--source-version={{ .Version }}"
+      - "-o"
+      - "cyclonedx-json=$document"
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--bundle=${signature}"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
 changelog:
   sort: asc
   filters:
