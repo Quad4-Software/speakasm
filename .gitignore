@@ -8,6 +8,7 @@ dist/
 .vscode/
 coverage.out
 coverage.html
+.lighthouseci/
 web/models/
 web/vendor/kokoro/
 web/vendor/jszip/

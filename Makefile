@@ -32,7 +32,7 @@ all: assets build
 
 help:
 	@printf '%s\n' \
-		'assets        fetch offline Kokoro ONNX/voices/fonts/vendor' \
+		'assets        fetch offline Kokoro ONNX/voices/fonts/vendor (scripts/fetch-assets.sh [--shell])' \
 		'build         compile $(BIN)' \
 		'run           ensure assets then serve :8080' \
 		'test          go test + node tests' \
