@@ -12,7 +12,10 @@ let deferredInstall = null;
 window.addEventListener('beforeinstallprompt', (ev) => {
   ev.preventDefault();
   deferredInstall = ev;
-  document.getElementById('btn-install')?.removeAttribute('hidden');
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (!isIos) {
+    document.getElementById('btn-install')?.removeAttribute('hidden');
+  }
 });
 
 /**
@@ -51,6 +54,17 @@ export function setupInstallAffordance(els) {
     return;
   }
 
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
+  if (isIos && isSafari) {
+    els.installBtn.hidden = true;
+    els.iosTipBtn.hidden = false;
+    els.iosTipBtn.addEventListener('click', () => {
+      els.iosTipPanel.hidden = !els.iosTipPanel.hidden;
+    });
+    return;
+  }
+
   if (deferredInstall) {
     els.installBtn.hidden = false;
   }
@@ -75,15 +89,6 @@ export function setupInstallAffordance(els) {
       /* ignore */
     }
   });
-
-  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
-  if (isIos && isSafari) {
-    els.iosTipBtn.hidden = false;
-    els.iosTipBtn.addEventListener('click', () => {
-      els.iosTipPanel.hidden = !els.iosTipPanel.hidden;
-    });
-  }
 }
 
 /**

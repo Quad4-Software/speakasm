@@ -81,6 +81,8 @@ export async function bootApp() {
   let scrubbing = false;
   let clockWatch = 0;
 
+  void loadAppVersion();
+
   setBusy(true, 'Getting ready...');
   /** @type {string} */
   let readyStatus = 'Ready when you are.';
@@ -143,6 +145,8 @@ export async function bootApp() {
   });
 
   wireDrop();
+  wireVoiceRail();
+  wireVisualViewport();
   updateCharCount();
   syncPlaybackUi();
 
@@ -208,6 +212,11 @@ export async function bootApp() {
       }
       picker.appendChild(btn);
     }
+    const selected = picker.querySelector('.voice-chip.is-selected');
+    if (selected instanceof HTMLElement) {
+      selected.scrollIntoView({ inline: 'center', block: 'nearest' });
+    }
+    syncVoiceRail();
   }
 
   /**
@@ -230,6 +239,11 @@ export async function bootApp() {
       setStatus(`Voice: ${voice.label}`);
       els.status.classList.add('is-ok');
     }
+    const selected = els.voicePicker.querySelector('.voice-chip.is-selected');
+    if (selected instanceof HTMLElement) {
+      selected.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+    syncVoiceRail();
   }
 
   /**
@@ -789,6 +803,43 @@ export async function bootApp() {
     });
   }
 
+  function wireVoiceRail() {
+    const rail = els.voicePicker.parentElement;
+    if (!(rail instanceof HTMLElement)) {
+      return;
+    }
+    const sync = () => syncVoiceRail();
+    els.voicePicker.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync, { passive: true });
+    sync();
+  }
+
+  function syncVoiceRail() {
+    const rail = els.voicePicker.parentElement;
+    if (!(rail instanceof HTMLElement)) {
+      return;
+    }
+    const el = els.voicePicker;
+    const max = el.scrollWidth - el.clientWidth;
+    const left = el.scrollLeft;
+    rail.classList.toggle('can-left', left > 4);
+    rail.classList.toggle('can-right', max - left > 4);
+  }
+
+  function wireVisualViewport() {
+    const vv = window.visualViewport;
+    const apply = () => {
+      const h = vv ? `${Math.round(vv.height)}px` : `${window.innerHeight}px`;
+      document.documentElement.style.setProperty('--vvh', h);
+    };
+    apply();
+    if (vv) {
+      vv.addEventListener('resize', apply);
+      vv.addEventListener('scroll', apply);
+    }
+    window.addEventListener('resize', apply, { passive: true });
+  }
+
   function updateCharCount() {
     const n = els.input.value.length;
     els.charCount.textContent = `${n.toLocaleString()} chars`;
@@ -910,5 +961,31 @@ export async function bootApp() {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${String(s).padStart(2, '0')}`;
+  }
+}
+
+/**
+ * Show build version from the Go API when available.
+ * @returns {Promise<void>}
+ */
+async function loadAppVersion() {
+  const el = document.getElementById('app-version');
+  if (!(el instanceof HTMLElement)) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/version', { credentials: 'same-origin' });
+    if (!res.ok) {
+      return;
+    }
+    const data = await res.json();
+    const ver = data && typeof data.version === 'string' ? data.version.trim() : '';
+    if (!ver) {
+      return;
+    }
+    el.textContent = `v${ver}`;
+    el.hidden = false;
+  } catch {
+    // Static hosts without the API omit the label.
   }
 }
