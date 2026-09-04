@@ -104,7 +104,10 @@ COPY --from=vendor --chown=nonroot:nonroot /src/web/vendor/ /app/web/vendor/
 COPY --from=models --chown=nonroot:nonroot /models/ /app/web/models/
 COPY --from=models --chown=nonroot:nonroot /fonts/ /app/web/fonts/
 
-RUN chmod 0555 /app/speakasm \
+RUN test -f /app/web/vendor/kokoro/kokoro.js \
+	&& test -f /app/web/models/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx \
+	&& test -f /app/web/models/Kokoro-82M-v1.0-ONNX/onnx/model.onnx \
+	&& chmod 0555 /app/speakasm \
 	&& chmod -R a-w /app/web
 
 ENV SPEAKASM_ADDR=":8080" \

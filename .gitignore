@@ -14,3 +14,4 @@ web/vendor/kokoro/
 web/vendor/jszip/
 scripts/vendor/node_modules/
 scripts/vendor/package-lock.json
+scripts/screenshots/node_modules/
