@@ -80,17 +80,33 @@ export function createWaveController(canvas) {
   function start() {
     resize();
     cancelAnimationFrame(raf);
-    if (reduced) {
+    raf = 0;
+    if (reduced || document.hidden) {
       draw(0);
       return;
     }
     raf = requestAnimationFrame(draw);
   }
 
+  function stopLoop() {
+    cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
   window.addEventListener('resize', () => {
     resize();
-    if (reduced) {
+    if (reduced || document.hidden) {
       draw(0);
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopLoop();
+      return;
+    }
+    if (!reduced) {
+      start();
     }
   });
 
