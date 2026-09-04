@@ -37,10 +37,10 @@ done
 
 download "https://cdn.jsdelivr.net/fontsource/fonts/bricolage-grotesque@5.2.8/latin-700-normal.woff2" \
   "$FONT_DIR/bricolage-700.woff2"
-download "https://cdn.jsdelivr.net/fontsource/fonts/fraunces@5.2.8/latin-400-normal.woff2" \
-  "$FONT_DIR/fraunces-400.woff2"
-download "https://cdn.jsdelivr.net/fontsource/fonts/fraunces@5.2.8/latin-600-normal.woff2" \
-  "$FONT_DIR/fraunces-600.woff2"
+download "https://cdn.jsdelivr.net/fontsource/fonts/source-sans-3@5.2.8/latin-400-normal.woff2" \
+  "$FONT_DIR/source-sans-400.woff2"
+download "https://cdn.jsdelivr.net/fontsource/fonts/source-sans-3@5.2.8/latin-600-normal.woff2" \
+  "$FONT_DIR/source-sans-600.woff2"
 
 bash "$ROOT/scripts/vendor-kokoro.sh"
 

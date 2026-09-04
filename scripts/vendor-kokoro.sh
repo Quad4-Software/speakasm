@@ -22,6 +22,21 @@ if [[ ! -f "$WEB_BUNDLE" ]]; then
 fi
 cp -f "$WEB_BUNDLE" "$OUT_DIR/kokoro.js"
 
+# kokoro-js exports a wasmPaths-only stub as env. Point the export at the
+# real Transformers.js env so allowLocalModels / localModelPath work.
+KOKORO_JS="$OUT_DIR/kokoro.js" python3 - <<'PY'
+from pathlib import Path
+import os
+path = Path(os.environ["KOKORO_JS"])
+text = path.read_text()
+old = "export{Ef as KokoroTTS,kf as TextSplitterStream,Mf as env};"
+new = "export{Ef as KokoroTTS,kf as TextSplitterStream,Wg as env};"
+if old not in text:
+    raise SystemExit(f"unexpected kokoro env export in {path}")
+path.write_text(text.replace(old, new, 1))
+print("patched kokoro env export")
+PY
+
 ORT_DIRS=(
   "$VENDOR_DIR/node_modules/onnxruntime-web/dist"
   "$VENDOR_DIR/node_modules/@huggingface/transformers/dist"

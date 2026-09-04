@@ -5,6 +5,16 @@
 const UPDATE_TOAST_ID = 'pwa-update-toast';
 const COI_RELOAD_KEY = 'speakasm-coi-reload';
 
+/** @type {any} */
+let deferredInstall = null;
+
+// Capture before async SW/COI work so Chromium's one-shot event is not missed.
+window.addEventListener('beforeinstallprompt', (ev) => {
+  ev.preventDefault();
+  deferredInstall = ev;
+  document.getElementById('btn-install')?.removeAttribute('hidden');
+});
+
 /**
  * @returns {Promise<void>}
  */
@@ -41,26 +51,29 @@ export function setupInstallAffordance(els) {
     return;
   }
 
-  /** @type {any} */
-  let deferred = null;
+  if (deferredInstall) {
+    els.installBtn.hidden = false;
+  }
+
   window.addEventListener('beforeinstallprompt', (ev) => {
     ev.preventDefault();
-    deferred = ev;
+    deferredInstall = ev;
     els.installBtn.hidden = false;
   });
 
   els.installBtn.addEventListener('click', async () => {
-    if (!deferred) {
+    if (!deferredInstall) {
       return;
     }
+    const promptEvent = deferredInstall;
+    deferredInstall = null;
     els.installBtn.hidden = true;
-    deferred.prompt();
+    promptEvent.prompt();
     try {
-      await deferred.userChoice;
+      await promptEvent.userChoice;
     } catch {
       /* ignore */
     }
-    deferred = null;
   });
 
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);

@@ -107,17 +107,23 @@ export async function bootApp() {
    * @returns {Promise<typeof voices>}
    */
   async function loadVoices() {
-    const res = await fetch('/api/voices', { credentials: 'same-origin' });
-    if (!res.ok) {
-      const fallback = await fetch('/voices.json', { credentials: 'same-origin' });
-      if (!fallback.ok) {
-        throw new Error('Could not load voices.');
+    // Prefer static catalog (GitHub Pages has no Go /api). Fall back to API for Docker.
+    const sources = ['/voices.json', '/api/voices'];
+    for (const url of sources) {
+      try {
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) {
+          continue;
+        }
+        const data = await res.json();
+        if (Array.isArray(data.voices) && data.voices.length) {
+          return data.voices;
+        }
+      } catch {
+        /* try next */
       }
-      const data = await fallback.json();
-      return data.voices || [];
     }
-    const data = await res.json();
-    return data.voices || [];
+    throw new Error('Could not load voices.');
   }
 
   /**

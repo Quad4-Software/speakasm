@@ -38,8 +38,11 @@ export async function createKokoroEngine() {
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
   env.localModelPath = '/models/';
+  env.useBrowserCache = false;
   if (env.backends?.onnx?.wasm) {
     env.backends.onnx.wasm.wasmPaths = '/vendor/kokoro/';
+  } else if ('wasmPaths' in env) {
+    env.wasmPaths = '/vendor/kokoro/';
   }
 
   /** @type {any} */
@@ -156,14 +159,15 @@ export async function createKokoroEngine() {
  */
 async function pickDevice() {
   try {
-    if (navigator.gpu) {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (adapter) {
-        return 'webgpu';
-      }
+    if (!navigator.gpu) {
+      return 'wasm';
+    }
+    const adapter = await navigator.gpu.requestAdapter();
+    if (adapter) {
+      return 'webgpu';
     }
   } catch {
-    /* fall through */
+    /* fall through to wasm */
   }
   return 'wasm';
 }

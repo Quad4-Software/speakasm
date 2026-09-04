@@ -63,11 +63,11 @@ RUN curl -L --fail --retry 5 --retry-delay 2 \
 		-o /fonts/bricolage-700.woff2 \
 		"https://cdn.jsdelivr.net/fontsource/fonts/bricolage-grotesque@5.2.8/latin-700-normal.woff2" \
 	&& curl -L --fail --retry 5 --retry-delay 2 \
-		-o /fonts/fraunces-400.woff2 \
-		"https://cdn.jsdelivr.net/fontsource/fonts/fraunces@5.2.8/latin-400-normal.woff2" \
+		-o /fonts/source-sans-400.woff2 \
+		"https://cdn.jsdelivr.net/fontsource/fonts/source-sans-3@5.2.8/latin-400-normal.woff2" \
 	&& curl -L --fail --retry 5 --retry-delay 2 \
-		-o /fonts/fraunces-600.woff2 \
-		"https://cdn.jsdelivr.net/fontsource/fonts/fraunces@5.2.8/latin-600-normal.woff2"
+		-o /fonts/source-sans-600.woff2 \
+		"https://cdn.jsdelivr.net/fontsource/fonts/source-sans-3@5.2.8/latin-600-normal.woff2"
 
 FROM alpine:3.24@${ALPINE_DIGEST} AS runtime
 

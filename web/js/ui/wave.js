@@ -41,7 +41,7 @@ export function createWaveController(canvas) {
   function resize() {
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const width = canvas.clientWidth || canvas.width;
-    const height = Math.max(140, Math.round(width * 0.22));
+    const height = Math.max(56, Math.min(96, Math.round(width * 0.12)));
     canvas.width = Math.floor(width * ratio);
     canvas.height = Math.floor(height * ratio);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);

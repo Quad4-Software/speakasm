@@ -1,5 +1,5 @@
 /* speakasm service worker: offline shell, COOP/COEP isolation, auto-update */
-const CACHE_VERSION = 'speakasm-v0.1.0';
+const CACHE_VERSION = 'speakasm-v0.1.1';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
@@ -26,8 +26,8 @@ const PRECACHE = [
   '/icons/icon-maskable-192.png',
   '/icons/icon-maskable-512.png',
   '/fonts/bricolage-700.woff2',
-  '/fonts/fraunces-400.woff2',
-  '/fonts/fraunces-600.woff2',
+  '/fonts/source-sans-400.woff2',
+  '/fonts/source-sans-600.woff2',
   '/vendor/jszip/jszip.min.js',
   '/vendor/kokoro/kokoro.js',
 ];
