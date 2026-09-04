@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM node:22-alpine@${NODE_DIGEST} AS vendor
 
 WORKDIR /src
-COPY scripts/vendor/package.json ./scripts/vendor/
+COPY scripts/vendor/package.json scripts/vendor/package-lock.json ./scripts/vendor/
 COPY scripts/vendor-kokoro.sh ./scripts/vendor-kokoro.sh
 RUN apk add --no-cache bash curl python3 \
 	&& mkdir -p web/vendor/kokoro web/vendor/jszip \
