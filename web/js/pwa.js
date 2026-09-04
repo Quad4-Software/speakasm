@@ -5,19 +5,6 @@
 const UPDATE_TOAST_ID = 'pwa-update-toast';
 const COI_RELOAD_KEY = 'speakasm-coi-reload';
 
-/** @type {any} */
-let deferredInstall = null;
-
-// Capture before async SW/COI work so Chromium's one-shot event is not missed.
-window.addEventListener('beforeinstallprompt', (ev) => {
-  ev.preventDefault();
-  deferredInstall = ev;
-  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  if (!isIos) {
-    document.getElementById('btn-install')?.removeAttribute('hidden');
-  }
-});
-
 /**
  * @returns {Promise<void>}
  */
@@ -33,62 +20,6 @@ export async function registerPWA() {
   } catch (err) {
     console.warn('PWA registration failed', err);
   }
-}
-
-/**
- * @param {{
- *   installBtn: HTMLButtonElement,
- *   iosTipBtn: HTMLButtonElement,
- *   iosTipPanel: HTMLElement,
- * }} els
- */
-export function setupInstallAffordance(els) {
-  const standalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    /** @type {any} */ (navigator).standalone === true;
-
-  if (standalone) {
-    els.installBtn.hidden = true;
-    els.iosTipBtn.hidden = true;
-    els.iosTipPanel.hidden = true;
-    return;
-  }
-
-  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
-  if (isIos && isSafari) {
-    els.installBtn.hidden = true;
-    els.iosTipBtn.hidden = false;
-    els.iosTipBtn.addEventListener('click', () => {
-      els.iosTipPanel.hidden = !els.iosTipPanel.hidden;
-    });
-    return;
-  }
-
-  if (deferredInstall) {
-    els.installBtn.hidden = false;
-  }
-
-  window.addEventListener('beforeinstallprompt', (ev) => {
-    ev.preventDefault();
-    deferredInstall = ev;
-    els.installBtn.hidden = false;
-  });
-
-  els.installBtn.addEventListener('click', async () => {
-    if (!deferredInstall) {
-      return;
-    }
-    const promptEvent = deferredInstall;
-    deferredInstall = null;
-    els.installBtn.hidden = true;
-    promptEvent.prompt();
-    try {
-      await promptEvent.userChoice;
-    } catch {
-      /* ignore */
-    }
-  });
 }
 
 /**

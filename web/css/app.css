@@ -120,8 +120,6 @@ body {
   cursor: pointer;
 }
 
-.chrome-link[hidden],
-.ios-tip[hidden],
 #drop-overlay[hidden],
 #error[hidden],
 #meta[hidden],
@@ -134,20 +132,6 @@ body {
 .chrome-link:focus-visible {
   color: var(--accent);
   outline: none;
-}
-
-.ios-tip {
-  position: fixed;
-  top: 2.75rem;
-  right: 1.15rem;
-  z-index: 6;
-  max-width: 16rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-  line-height: 1.35;
 }
 
 .drop-overlay {
@@ -882,11 +866,6 @@ body {
     right: calc(0.85rem + var(--safe-right));
   }
 
-  .ios-tip {
-    top: calc(2.4rem + var(--safe-top));
-    right: calc(0.85rem + var(--safe-right));
-  }
-
   .site-foot {
     right: calc(0.85rem + var(--safe-right));
     bottom: calc(0.65rem + var(--safe-bottom));
@@ -970,13 +949,6 @@ body {
     display: inline-flex;
     align-items: center;
     font-size: 0.7rem;
-  }
-
-  .ios-tip {
-    top: calc(2.6rem + var(--safe-top));
-    right: calc(0.7rem + var(--safe-right));
-    left: calc(0.7rem + var(--safe-left));
-    max-width: none;
   }
 
   .stage {

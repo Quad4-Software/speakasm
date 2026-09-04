@@ -2,7 +2,7 @@ import { createKokoroEngine } from '../engine/kokoro.js';
 import { extractFromFile } from '../docs/extract.js';
 import { encodeWav } from '../audio/wav.js';
 import { createWaveController } from './wave.js';
-import { cacheModelUrls, setupInstallAffordance } from '../pwa.js';
+import { cacheModelUrls } from '../pwa.js';
 
 /**
  * Wire the page UI.
@@ -20,9 +20,6 @@ export async function bootApp() {
     btnPlay: /** @type {HTMLButtonElement} */ (document.getElementById('btn-play')),
     btnDownload: /** @type {HTMLButtonElement} */ (document.getElementById('btn-download')),
     btnClear: /** @type {HTMLButtonElement} */ (document.getElementById('btn-clear')),
-    btnInstall: /** @type {HTMLButtonElement} */ (document.getElementById('btn-install')),
-    btnIosTip: /** @type {HTMLButtonElement} */ (document.getElementById('btn-ios-tip')),
-    iosTipPanel: /** @type {HTMLElement} */ (document.getElementById('ios-tip-panel')),
     file: /** @type {HTMLInputElement} */ (document.getElementById('file')),
     status: /** @type {HTMLElement} */ (document.getElementById('status')),
     spinner: /** @type {HTMLElement} */ (document.getElementById('spinner')),
@@ -41,11 +38,6 @@ export async function bootApp() {
 
   const wave = createWaveController(els.wave);
   wave.start();
-  setupInstallAffordance({
-    installBtn: els.btnInstall,
-    iosTipBtn: els.btnIosTip,
-    iosTipPanel: els.iosTipPanel,
-  });
 
   /** @type {{ id: string, label: string, locale: string, gender: string, default?: boolean, notes?: string }[]} */
   let voices = [];
