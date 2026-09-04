@@ -72,7 +72,7 @@ export function createWaveController(canvas) {
       ctx.fillRect(x, mid - bh * 0.55, Math.max(2, w / bars - 3), bh);
     }
 
-    if (!reduced) {
+    if (!reduced && !document.hidden) {
       raf = requestAnimationFrame(draw);
     }
   }
