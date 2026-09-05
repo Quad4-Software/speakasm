@@ -1,0 +1,11 @@
+{
+  "name": "speakasm",
+  "repo": "Quad4-Software/speakasm",
+  "live": "https://speakasm.quad4.io",
+  "image": "ghcr.io/quad4-software/speakasm",
+  "license": "0BSD",
+  "tagline": "in-browser Kokoro",
+  "labelColor": "0c0b0a",
+  "color": "e8b078",
+  "style": "flat-square"
+}
